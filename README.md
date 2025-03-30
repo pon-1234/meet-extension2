@@ -25,11 +25,38 @@ Google Meet用のLoL（League of Legends）スタイルのピン機能を提供�
 3. 承認済みドメインに`google.com`が含まれていることを確認します
 4. 組織内利用の場合は、Googleプロバイダーの設定内で「ドメイン制限」を有効化し、会社のドメイン（例: `example.com`）を追加します
 
-### 3. Realtime Databaseの作成
+### 3. Realtime Databaseの作成とセキュリティルールの設定
 
 1. Firebaseコンソールの「Realtime Database」セクションに移動します
-2. データベースを作成し、テストモードまたは本番モードでセキュリティルールを設定します
-3. 本番環境では、適切なセキュリティルールを設定してください
+2. データベースを作成します
+3. 「ルール」タブをクリックし、以下のセキュリティルールを設定します（会社のドメインに合わせて修正してください）：
+
+```json
+{
+  "rules": {
+    "meetings": {
+      "$meetingId": {
+        "pins": {
+          ".read": "auth != null && auth.token.email.endsWith('@会社のドメイン.com')",
+
+          "$pinId": {
+            ".write": "auth != null && auth.token.email.endsWith('@会社のドメイン.com') && (!data.exists() || data.child('createdBy/uid').val() === auth.uid)",
+
+            ".validate": "newData.hasChildren(['type', 'createdAt', 'createdBy']) && newData.child('type').isString() && newData.child('createdBy').hasChildren(['uid', 'displayName', 'email'])",
+
+            ".read": "auth != null && auth.token.email.endsWith('@会社のドメイン.com')"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+このセキュリティルールにより：
+- 認証済みの特定ドメインユーザーのみがピンを読み書きできる
+- ユーザーは自分が作成したピンのみを削除できる
+- データ構造のバリデーションが行われる
 
 ### 4. 拡張機能のインストール
 
