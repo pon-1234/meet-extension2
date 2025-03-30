@@ -211,6 +211,7 @@ function setupUI() {
     }
     option.addEventListener('click', (event) => {
       event.stopPropagation();
+      console.log('Ping option clicked:', key); // ★ログ追加1
       createPin(key);
       pingMenu.classList.add('hidden');
     });
@@ -309,6 +310,7 @@ function showLoginPrompt() {
 // --- Firebase Realtime Database 操作 ---
 
 function createPin(pingType) {
+  console.log(`createPin called with type: ${pingType}`); // ★ログ追加2
   if (!currentUser || !currentMeetingId) {
     console.error('ピンを作成できません: ユーザーがログインしていないか、ミーティングIDが見つかりません。'); // 日本語修正
     showMessage('エラー: ピンを作成できません。ログイン状態を確認してください。', true); // 日本語修正
@@ -334,6 +336,7 @@ function createPin(pingType) {
   };
 
   const newPinRef = currentPinsRef.push();
+  console.log("Attempting to set pin data to Firebase:", pin); // ★ログ追加3
   newPinRef.set(pin)
     .then(() => {
       console.log('ピンが作成されました:', newPinRef.key); // 日本語修正
@@ -343,6 +346,7 @@ function createPin(pingType) {
     })
     .catch(error => {
       console.error('ピンの作成エラー:', error); // 日本語修正
+      console.error('Firebase set error in createPin:', error); // ★ログ追加4
       showMessage(`エラー: ピンを作成できませんでした: ${error.message}`, true); // 日本語修正
     });
 }
@@ -402,11 +406,13 @@ function setupPinsListener() {
   pinsRef.on('child_added', (snapshot) => {
     const pinId = snapshot.key;
     const pin = snapshot.val();
+    console.log('Firebase child_added event triggered:', pinId, pin); // ★ログ追加5
     if (!pin || !pin.createdBy) return; // createdBy がないデータは無視
     console.log('Pin added (child_added):', pinId, pin);
     renderPin(pinId, pin);
   }, (error) => {
     console.error('Error listening for child_added:', error);
+    console.error('Firebase child_added listener error:', error); // ★ログ追加6
     showMessage('エラー: ピンの受信に失敗しました。', true); // 日本語修正
   });
 
@@ -433,6 +439,7 @@ function setupPinsListener() {
 // --- 表示関連 ---
 
 function renderPin(pinId, pin) {
+  console.log(`renderPin called for pinId: ${pinId}`, pin); // ★ログ追加7
   const pinsArea = document.getElementById('pins-area');
   if (!pinsArea) {
     console.error("renderPin: #pins-area not found.");
@@ -477,6 +484,7 @@ function renderPin(pinId, pin) {
     pinElement.addEventListener('click', () => removePinFromDb(pinId));
   }
 
+  console.log("Pin element created, attempting to append:", pinElement); // ★ログ追加8
   pinsArea.appendChild(pinElement);
   setTimeout(() => {
     pinElement.classList.add('show');
