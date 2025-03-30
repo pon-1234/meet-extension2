@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Meet LoL-Style Ping Extension",
+  "version": "1.0",
+  "description": "Google Meetでゲームのようなピン機能を提供する拡張機能",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://meet.google.com/*"],
+      "js": [
+        "firebase/firebase-app-compat.js",
+        "firebase/firebase-auth-compat.js",
+        "firebase/firebase-database-compat.js",
+        "firebase-config.js",
+        "content.js"
+      ],
+      "css": ["styles.css"]
+    }
+  ],
+  "permissions": [
+    "storage",
+    "identity"
+  ],
+  "host_permissions": [
+    "*://meet.google.com/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
