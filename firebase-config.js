@@ -12,4 +12,4 @@ const firebaseConfig = {
 };
 
 // 会社ドメイン (コード内で使用する場合)
-const COMPANY_DOMAIN = 'your_company.com'; // ← 必要に応じてあなたの会社のドメインに設定
+const COMPANY_DOMAIN = 'rasa-jp.co.jp'; // 会社のドメインに設定
