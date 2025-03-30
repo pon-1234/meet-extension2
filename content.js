@@ -1,114 +1,153 @@
-// Google Meetu306eu753bu9762u306bu30d4u30f3u6a5fu80fdu3092u8ffdu52a0u3059u308bu30b3u30f3u30c6u30f3u30c4u30b9u30afu30eau30d7u30c8
+// content.js - Google Meetの画面にピン機能を追加するコンテンツスクリプト
 
-// u30b0u30edu30fcu30d0u30ebu5909u6570
+// グローバル変数
 let currentUser = null;
 let currentMeetingId = null;
-let database = null;
-let auth = null;
+let database = null; // 必要になったら取得
+let auth = null; // 必要になったら取得
 let pinsRef = null;
-let userPins = {}; // u30e6u30fcu30b6u30fcu304cu4f5cu6210u3057u305fu30d4u30f3u3092u8ffdu8de1
+let userPins = {}; // ユーザーが作成したピンを追跡
 
-// Firebaseu521du671fu5316
+// Firebase初期化（設定読み込みとインスタンス取得準備）
 function initializeFirebase() {
   try {
-    // Firebaseu8a2du5b9au306fu65e2u306bfirebase-config.jsu304bu3089u8aadu307fu8fbcu307eu308cu3066u3044u308bu306fu305a
-    console.log('Firebaseu521du671fu5316u4e2d...');
-    
-    // Firebaseu304cu521du671fu5316u3055u308cu3066u3044u306au3044u5834u5408u306eu307f
-    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
+    // firebaseConfig は firebase-config.js でグローバルに定義されている前提
+    if (typeof firebase === 'undefined' || typeof firebaseConfig === 'undefined') {
+      console.error('Firebase SDK または設定が読み込まれていません。');
+      showMessage('エラー: 初期化に失敗しました。');
+      return;
     }
-    
-    auth = firebase.auth();
-    database = firebase.database();
-    
-    // u8a8du8a3cu72b6u614bu306eu76e3u8996u3092u8a2du5b9a
-    setupAuthListener();
-    
-    // Meeting IDu3092u53d6u5f97
+
+    // Background Script で初期化済みのはずなので、ここではインスタンス取得のみ試みる
+    console.log('Content script: Firebase SDK/Config loaded.');
+
+    // 認証状態をBackground Scriptに問い合わせる
+    requestAuthStatusFromBackground();
+
+    // Meeting IDを検出
     detectMeetingId();
-    
-    console.log('Firebaseu521du671fu5316u5b8cu4e86');
+
   } catch (error) {
-    console.error('Firebaseu521du671fu5316u30a8u30e9u30fc:', error);
+    console.error('Content script Firebase 初期化処理エラー:', error);
+    showMessage('エラー: 初期化中に問題が発生しました。');
   }
 }
 
-// Meeting IDu3092URLu304bu3089u53d6u5f97
+// Meeting IDをURLから取得
 function detectMeetingId() {
+  // ... (変更なし) ...
   const url = window.location.href;
   const meetRegex = /meet\.google\.com\/([a-z0-9\-]+)/i;
   const match = url.match(meetRegex);
   
   if (match && match[1]) {
-    currentMeetingId = match[1];
-    console.log('u691cu51fau3055u308cu305fMeeting ID:', currentMeetingId);
-    
-    // u30d4u30f3u306eu53c2u7167u3092u8a2du5b9a
-    if (database && currentUser) {
-      setupPinsListener();
-    }
-    
-    // UIu3092u8ffdu52a0
-    setupUI();
+      currentMeetingId = match[1];
+      console.log('検出されたMeeting ID:', currentMeetingId);
+      // ユーザーが認証済みならリスナー設定などを行う
+      if (currentUser) {
+          setupPinsListener(); // リスナー設定
+          setupUI(); // UI設定
+      }
   } else {
-    console.log('Meeting IDu304cu898bu3064u304bu308au307eu305bu3093');
-    currentMeetingId = null;
+      console.log('Meeting IDが見つかりません');
+      currentMeetingId = null;
+      cleanupUI(); // UIがあれば削除
   }
 }
 
-// u8a8du8a3cu72b6u614bu306eu76e3u8996
-function setupAuthListener() {
-  if (!auth) return;
-  auth.onAuthStateChanged((user) => {
-    if (user) { // u30c9u30e1u30a4u30f3u5236u9650u306fu5fc5u8981u306bu5fdcu3058u3066u8ffdu52a0
-      currentUser = {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName || user.email.split('@')[0]
-      };
-      
-      console.log('u30edu30b0u30a4u30f3u4e2d:', currentUser.email);
-      
-      // Meeting IDu304cu3042u308cu3070u30d4u30f3u306eu30eau30b9u30cau30fcu3092u8a2du5b9a
-      if (currentMeetingId) {
-        setupPinsListener();
-      }
-      
-      // UIu3092u8ffdu52a0
-      setupUI();
-    } else {
-      console.log('u672au30edu30b0u30a4u30f3u72b6u614b');
-      currentUser = null;
-      cleanupUI();
+ // Background Scriptに認証状態を問い合わせる
+function requestAuthStatusFromBackground() {
+  chrome.runtime.sendMessage({ action: 'getAuthStatus' }, (response) => {
+    // ... (既存のコードを流用 - currentUser設定、startPingSystem呼び出しなど) ...
+     if (chrome.runtime.lastError) {
+        console.error("Error sending message to background:", chrome.runtime.lastError.message);
+        // リトライやエラー表示など
+        return;
     }
+    handleAuthResponse(response); // 応答を処理する関数を呼び出す
   });
 }
 
-// u30d4u30f3u306eu30eau30a2u30ebu30bfu30a4u30e0u30eau30b9u30cau30fcu3092u8a2du5b9a
+// Backgroundからの認証応答を処理
+function handleAuthResponse(response) {
+    const user = response?.user;
+    console.log('Received auth status from background:', user);
+    if (user && user.email.endsWith(`@${COMPANY_DOMAIN}`)) {
+        currentUser = user;
+        startPingSystem(); // UI作成やリスナー設定を含む関数
+    } else {
+        currentUser = null;
+        if (user) {
+             console.warn('User not from allowed domain.');
+             showMessage('許可されたドメインのアカウントではありません。');
+        } else {
+             console.log('User not logged in.');
+             // ログインプロンプト表示など (showLoginPrompt())
+             showLoginPrompt();
+        }
+        cleanupUI(); // UIを削除または非表示にする
+    }
+}
+
+// ピンシステムの初期化・開始 (UI作成、リスナー設定など)
+function startPingSystem() {
+  if (!currentUser) {
+      console.error('User not authenticated.');
+      requestAuthStatusFromBackground(); // 再確認
+      return;
+  }
+   if (!currentMeetingId) {
+      detectMeetingId(); // Meeting IDがなければ再検出
+      if(!currentMeetingId) {
+         console.error('Meeting ID not found.');
+         return;
+      }
+   }
+
+  // UIがなければ作成
+  if (!document.getElementById('lol-ping-container')) {
+    setupUI(); // UIセットアップ関数を呼び出す
+  } else {
+     console.log("Ping UI already exists.");
+  }
+
+  // Firebaseリスナーの設定
+  setupPinsListener();
+
+  console.log('Ping system initialized/updated for meeting:', currentMeetingId);
+  showMessage(`ピンシステム起動 (${currentUser.displayName || currentUser.email.split('@')[0]})`);
+}
+
+// ピンのリアルタイムリスナーを設定
 function setupPinsListener() {
-  if (!database || !currentMeetingId) return;
+  if (!currentUser || !currentMeetingId) return;
   
-  // u65e2u5b58u306eu30eau30b9u30cau30fcu3092u30afu30eau30fcu30f3u30a2u30c3u30d7
+  // 既存のリスナーをクリーンアップ
   if (pinsRef) {
     pinsRef.off();
+    console.log("Detached old pins listener.");
   }
+
+  // データベースインスタンスを取得
+  const db = getDatabase();
+  if (!db) return;
   
-  // u65b0u3057u3044u30eau30b9u30cau30fcu3092u8a2du5b9a
-  pinsRef = database.ref(`meetings/${currentMeetingId}/pins`);
+  // 新しいリスナーを設定
+  pinsRef = db.ref(`meetings/${currentMeetingId}/pins`);
+  console.log("Setting up new pins listener for:", currentMeetingId);
   
-  // u65b0u3057u3044u30d4u30f3u304cu8ffdu52a0u3055u308cu305fu3068u304d
+  // 新しいピンが追加されたとき
   pinsRef.on('child_added', (snapshot) => {
     const pinId = snapshot.key;
     const pin = snapshot.val();
-    console.log('u65b0u3057u3044u30d4u30f3:', pinId, pin);
+    console.log('新しいピン:', pinId, pin);
     renderPin(pinId, pin);
   });
   
-  // u30d4u30f3u304cu524au9664u3055u308cu305fu3068u304d
+  // ピンが削除されたとき
   pinsRef.on('child_removed', (snapshot) => {
     const pinId = snapshot.key;
-    console.log('u30d4u30f3u304cu524au9664u3055u308cu307eu3057u305f:', pinId);
+    console.log('ピンが削除されました:', pinId);
     removePin(pinId);
   });
 }
@@ -189,54 +228,81 @@ function setupUI() {
   console.log('u30d4u30f3UIu304cu8ffdu52a0u3055u308cu307eu3057u305f');
 }
 
-// UIu8981u7d20u3092u524au9664
+// UIを削除
 function cleanupUI() {
   const container = document.getElementById('lol-ping-container');
   if (container) {
     container.remove();
-    console.log('u30d4u30f3UIu304cu524au9664u3055u308cu307eu3057u305f');
+    console.log('ピンUIが削除されました');
   }
 }
 
-// u30d4u30f3u3092u4f5cu6210
+// データベースインスタンスを取得するヘルパー関数
+function getDatabase() {
+  if (!database) {
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      database = firebase.database();
+      console.log('データベースインスタンスを取得しました');
+    } else {
+      console.error('データベースを取得できません: Firebase が初期化されていません。');
+      return null;
+    }
+  }
+  return database;
+}
+
+// ピンを作成
 function createPin(pingType) {
   if (!currentUser || !currentMeetingId) {
-    console.error('u30d4u30f3u3092u4f5cu6210u3067u304du307eu305bu3093: u30e6u30fcu30b6u30fcu304cu30edu30b0u30a4u30f3u3057u3066u3044u306au3044u304bu3001u30dfu30fcu30c6u30a3u30f3u30b0IDu304cu898bu3064u304bu308au307eu305bu3093u3002');
-    showMessage('u30a8u30e9u30fc: u30d4u30f3u3092u4f5cu6210u3067u304du307eu305bu3093u3002u30edu30b0u30a4u30f3u72b6u614bu3092u78bau8a8du3057u3066u304fu3060u3055u3044u3002');
+    console.error('ピンを作成できません: ユーザーがログインしていないか、ミーティングIDが見つかりません。');
+    showMessage('エラー: ピンを作成できません。ログイン状態を確認してください。');
     return;
   }
   
-  // u30d4u30f3u30c7u30fcu30bfu306eu4f5cu6210
+  // データベースインスタンスを取得
+  const db = getDatabase();
+  if (!db) {
+    console.error('データベースが利用できないためピンを作成できません');
+    showMessage('エラー: データベース接続に問題があります。');
+    return;
+  }
+  
+  // pinsRefが未設定の場合は設定
+  if (!pinsRef) {
+    pinsRef = db.ref(`meetings/${currentMeetingId}/pins`);
+  }
+  
+  // ピンデータの作成
   const pin = {
     type: pingType,
     createdAt: firebase.database.ServerValue.TIMESTAMP,
     createdBy: {
       uid: currentUser.uid,
-      displayName: currentUser.displayName,
+      displayName: currentUser.displayName || currentUser.email.split('@')[0],
       email: currentUser.email
     },
-    expiresAt: Date.now() + 30000 // 30u79d2u5f8cu306bu6d88u3048u308b
+    expiresAt: Date.now() + 30000 // 30秒後に消える
   };
   
-  // u30c7u30fcu30bfu30d9u30fcu30b9u306bu30d4u30f3u3092u8ffdu52a0
+  // データベースにピンを追加
   const newPinRef = pinsRef.push();
   newPinRef.set(pin)
     .then(() => {
-      console.log('u30d4u30f3u304cu4f5cu6210u3055u308cu307eu3057u305f:', newPinRef.key);
+      console.log('ピンが作成されました:', newPinRef.key);
       
-      // u81eau5206u306eu30d4u30f3u3092u8ffdu8de1
+      // 自分のピンを追跡
       userPins[newPinRef.key] = true;
       
-      // u671fu9650u5207u308cu3067u81eau52d5u524au9664
+      // 期限切れで自動削除
       setTimeout(() => {
         newPinRef.remove()
-          .then(() => console.log('u30d4u30f3u306eu671fu9650u304cu5207u308cu307eu3057u305f:', newPinRef.key))
-          .catch(error => console.error('u30d4u30f3u306eu81eau52d5u524au9664u30a8u30e9u30fc:', error));
+          .then(() => console.log('ピンの期限が切れました:', newPinRef.key))
+          .catch(error => console.error('ピンの自動削除エラー:', error));
       }, 30000);
     })
     .catch(error => {
-      console.error('u30d4u30f3u306eu4f5cu6210u30a8u30e9u30fc:', error);
-      showMessage(`u30a8u30e9u30fc: u30d4u30f3u3092u4f5cu6210u3067u304du307eu305bu3093u3067u3057u305f: ${error.message}`);
+      console.error('ピンの作成エラー:', error);
+      showMessage(`エラー: ピンを作成できませんでした: ${error.message}`);
     });
 }
 

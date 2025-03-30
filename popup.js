@@ -1,8 +1,5 @@
-// ポップアップのJavaScriptコード
+// popup.js
 
-let currentUser = null;
-
-// DOMが読み込まれたら実行
 document.addEventListener('DOMContentLoaded', function() {
   const statusElement = document.getElementById('status');
   const userInfoElement = document.getElementById('user-info');
@@ -12,102 +9,101 @@ document.addEventListener('DOMContentLoaded', function() {
   const logoutButton = document.getElementById('logout-button');
   const errorMessageElement = document.getElementById('error-message');
 
-  // 認証状態の監視
-  function setupAuthListener() {
-    auth.onAuthStateChanged((user) => {
-      if (user) {
-        // ドメイン制限（必要に応じてコメントを解除）
-        // if (!user.email.endsWith('@example.com')) {
-        //   errorMessageElement.textContent = '許可されていないドメインです。組織アカウントでログインしてください。';
-        //   auth.signOut();
-        //   return;
-        // }
-        
-        // ログイン成功
-        currentUser = {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || user.email.split('@')[0]
-        };
-        
-        // UI更新
-        statusElement.textContent = 'ステータス: ログイン済み';
-        userEmailElement.textContent = currentUser.email;
-        loginSectionElement.style.display = 'none';
-        userInfoElement.style.display = 'block';
-        errorMessageElement.textContent = '';
-        
-        // ログイン情報をコンテンツスクリプトに通知
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-          if (tabs[0] && tabs[0].url && tabs[0].url.includes('meet.google.com')) {
-            chrome.tabs.sendMessage(tabs[0].id, {action: 'userLoggedIn', user: currentUser});
-          }
-        });
+  // エラーメッセージ表示関数
+  function displayError(message) {
+      errorMessageElement.textContent = message;
+  }
+
+  // UI更新関数
+  function updatePopupUI(user) {
+    displayError(''); // エラークリア
+    if (user) {
+      statusElement.textContent = 'ステータス: ログイン済み';
+      userEmailElement.textContent = user.displayName || user.email; // displayName優先
+      loginSectionElement.style.display = 'none';
+      userInfoElement.style.display = 'block';
+    } else {
+      statusElement.textContent = 'ステータス: 未ログイン';
+      loginSectionElement.style.display = 'block';
+      userInfoElement.style.display = 'none';
+    }
+    // ボタンの状態リセット
+    loginButton.disabled = false;
+    loginButton.textContent = 'Googleアカウントでログイン';
+  }
+
+  // ログインボタンのクリックイベント
+  loginButton.addEventListener('click', function() {
+    loginButton.disabled = true;
+    loginButton.textContent = 'ログイン処理中...';
+    displayError('');
+
+    // Background Scriptにログインをリクエスト
+    chrome.runtime.sendMessage({ action: 'requestLogin' }, function(response) {
+      if (chrome.runtime.lastError) {
+          console.error("Login request error:", chrome.runtime.lastError.message);
+          displayError(`ログイン開始エラー: ${chrome.runtime.lastError.message}`);
+          loginButton.disabled = false;
+          loginButton.textContent = 'Googleアカウントでログイン';
+          return;
+      }
+      if (response && response.started) {
+        statusElement.textContent = 'Googleアカウントを選択してください...';
+        // 状態更新は Background からの通知を待つ
       } else {
-        // 未ログイン状態
-        currentUser = null;
-        statusElement.textContent = 'ステータス: 未ログイン';
-        loginSectionElement.style.display = 'block';
-        userInfoElement.style.display = 'none';
+        displayError(response?.error || 'ログインを開始できませんでした。');
+        loginButton.disabled = false;
+        loginButton.textContent = 'Googleアカウントでログイン';
       }
     });
-  }
+  });
 
-  // Googleログイン処理
-  function loginWithGoogle() {
-    // ログインボタンを無効化して連続クリックを防止
-    loginButton.disabled = true;
-    errorMessageElement.textContent = 'ログイン処理中...';
-    
-    // ポップアップではなくリダイレクトを使用
-    auth.signInWithRedirect(googleProvider)
-      .catch((error) => {
-        console.error('ログインエラー:', error);
-        errorMessageElement.textContent = `ログインエラー: ${error.message}`;
-        loginButton.disabled = false;
-      });
-  }
-
-  // リダイレクト後の処理
-  function checkRedirectResult() {
-    auth.getRedirectResult()
-      .then((result) => {
-        if (result.user) {
-          console.log('リダイレクトログイン成功:', result.user.email);
-        }
-      })
-      .catch((error) => {
-        console.error('リダイレクト結果エラー:', error);
-        errorMessageElement.textContent = `ログインエラー: ${error.message}`;
-        loginButton.disabled = false;
-      });
-  }
-
-  // ログアウト処理
-  function logout() {
-    auth.signOut()
-      .then(() => {
-        console.log('ログアウトしました');
-        // コンテンツスクリプトにログアウトを通知
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-          if (tabs[0] && tabs[0].url && tabs[0].url.includes('meet.google.com')) {
-            chrome.tabs.sendMessage(tabs[0].id, {action: 'userLoggedOut'});
+  // ログアウトボタンのクリックイベント
+  logoutButton.addEventListener('click', function() {
+      logoutButton.disabled = true;
+      logoutButton.textContent = 'ログアウト中...';
+      chrome.runtime.sendMessage({ action: 'requestLogout' }, function(response) {
+          if (chrome.runtime.lastError || !response?.success) {
+              console.error("Logout request error:", chrome.runtime.lastError?.message || response?.error);
+              displayError(`ログアウトエラー: ${chrome.runtime.lastError?.message || response?.error}`);
+          } else {
+              console.log("Logout successful via popup request.");
+              // UI更新はBackgroundからの通知に任せる
           }
-        });
-      })
-      .catch((error) => {
-        console.error('ログアウトエラー:', error);
+          logoutButton.disabled = false;
+          logoutButton.textContent = 'ログアウト';
       });
-  }
+  });
 
-  // イベントリスナーの設定
-  loginButton.addEventListener('click', loginWithGoogle);
-  logoutButton.addEventListener('click', logout);
 
-  // 初期化
-  setupAuthListener();
-  statusElement.textContent = 'ステータス: 初期化中...';
-  
-  // リダイレクト結果をチェック
-  checkRedirectResult();
+  // --- Background Scriptとの連携 ---
+
+  // Popupが開いたときに現在の認証状態を問い合わせる
+  statusElement.textContent = 'ステータス: 認証状態を確認中...';
+  chrome.runtime.sendMessage({ action: 'getAuthStatus' }, function(response) {
+    if (chrome.runtime.lastError) {
+      console.error("Error getting auth status:", chrome.runtime.lastError.message);
+      statusElement.textContent = '状態取得エラー';
+      displayError(`状態取得エラー: ${chrome.runtime.lastError.message}`);
+      updatePopupUI(null); // エラー時は未ログインとして表示
+      return;
+    }
+    console.log("Initial auth status from background:", response?.user);
+    updatePopupUI(response?.user);
+  });
+
+  // Background Scriptからの認証状態変更通知を受け取るリスナー
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.action === 'authStatusChanged') {
+          console.log("Popup received auth status update from background:", message.user);
+          updatePopupUI(message.user);
+          // 確認応答は任意 (sendResponse({received: true});)
+          return true; // 非同期応答を示す場合
+      }
+      // 他のメッセージタイプに対する処理 ...
+  });
+
+  // --- 初期化完了 ---
+  console.log("Popup script initialized.");
+
 });
