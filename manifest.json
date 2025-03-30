@@ -36,6 +36,10 @@
     "storage",
     "identity"
   ],
+  "oauth2": {
+    "client_id": "217193969712-a8dn0vn1c2v6v8uu2oq5fhh7kp9g4lqb.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"]
+  },
   "host_permissions": [
     "*://meet.google.com/*"
   ],
