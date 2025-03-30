@@ -33,7 +33,15 @@ function initializeFirebase() {
       return;
     }
 
-    // Background Script で初期化済みのはず
+    // Content Scriptでも明示的に初期化する
+    if (!firebase.apps.length) {
+      console.log('Content script: Firebase App初期化中...');
+      firebase.initializeApp(firebaseConfig);
+      console.log('Content script: Firebase App初期化完了');
+    } else {
+      console.log('Content script: Firebase Appは既に初期化されています');
+    }
+
     console.log('Content script: Firebase SDK/Config loaded.');
 
     // 認証状態をBackground Scriptに問い合わせる
