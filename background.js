@@ -38,27 +38,39 @@ function initializeFirebase() {
 }
 
 function setupAuthListener() {
-  if (!auth) { console.error("BG: Authリスナー設定失敗: Authが初期化されていません"); return; }
+  if (!auth) { console.error("BG: Auth listener setup failed - Auth not initialized"); return; }
   auth.onAuthStateChanged((user) => {
-    const previousUser = currentUser; // 以前のユーザー情報を保持
-    if (user && user.email.endsWith(`@${COMPANY_DOMAIN}`)) {
+    console.log("BG: onAuthStateChanged triggered. user:", user); // ★ユーザーオブジェクト全体を確認
+    const previousUser = currentUser;
+
+    // ★★★ ドメインチェックの詳細ログ ★★★
+    let isAllowedDomain = false;
+    if (user && user.email) {
+        console.log(`BG: Checking email "${user.email}" against domain "@${COMPANY_DOMAIN}"`);
+        isAllowedDomain = user.email.endsWith(`@${COMPANY_DOMAIN}`);
+        console.log(`BG: Domain check result: ${isAllowedDomain}`);
+    } else {
+        console.log("BG: User or user.email is null/undefined.");
+    }
+    // ★★★ ここまで ★★★
+
+    if (isAllowedDomain) { // ドメインチェック結果を使用
       currentUser = { uid: user.uid, email: user.email, displayName: user.displayName };
-      console.log("BG: ユーザー認証完了:", currentUser.email);
-      // ログインしたら、アクティブなMeetタブのリスナーを開始/再設定
+      console.log("BG: User authenticated:", currentUser.email);
       startListenersForActiveMeetTabs();
     } else {
       if (user) {
-        console.warn("BG: 許可されていないドメインからのログイン:", user.email);
-        auth.signOut().catch(err => console.error("BG: サインアウトエラー:", err));
+        console.warn("BG: User logged in but not from allowed domain:", user.email);
+        // ★★★ ログアウトは一時的にコメントアウトして、状態変化だけ確認 ★★★
+        // auth.signOut().catch(err => console.error("BG: Sign out error:", err));
+        console.log("BG: Would sign out user due to domain mismatch, but commented out for debugging.");
       } else {
-        console.log("BG: ユーザーがログアウトしました");
+        console.log("BG: User logged out.");
       }
-      currentUser = null;
-      // ログアウトしたら全てのリスナーを停止
+      currentUser = null; // 許可されないドメイン or ログアウトなら currentUser は null
       stopAllListeners();
     }
 
-    // 認証状態が変わったことを通知 (ユーザー情報が変わった場合のみ)
     if (JSON.stringify(previousUser) !== JSON.stringify(currentUser)) {
         notifyAuthStatusToAllContexts();
     }

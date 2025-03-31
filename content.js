@@ -223,25 +223,25 @@ function setupUI() {
     // ★★★ クリック時に Background にメッセージ送信 ★★★
     option.addEventListener('click', (event) => {
       event.stopPropagation();
-      console.log('Ping option clicked:', key);
-      // createPin 関数ではなくメッセージ送信
+      // createPin(key); // ← この行は削除！
+      console.log(`Ping option ${key} clicked. Sending message to background...`); // ★ログ変更
       chrome.runtime.sendMessage({
           action: 'createPing',
           meetingId: currentMeetingId,
           pingType: key
       }, (response) => {
           if (chrome.runtime.lastError) {
-              console.error("createPingメッセージ送信エラー:", chrome.runtime.lastError.message);
-              showMessage('エラー: ピンの作成に失敗しました。', true);
+              console.error("Error sending createPing message:", chrome.runtime.lastError.message);
+              showMessage("エラー: ピンの作成依頼に失敗しました。", true); // メッセージ修正
           } else if (response && response.success) {
-              console.log("ピン作成リクエストが成功しました、pinId:", response.pinId);
+              console.log("Ping creation requested successfully, pinId:", response.pinId);
               showMessage(`ピン「${pingInfo.label}」を作成しました`);
           } else {
-              console.error("ピンの作成に失敗しました:", response?.error, "コード:", response?.code);
+              console.error("Failed to create pin (response from background):", response?.error, "Code:", response?.code);
               showMessage(`エラー: ピンを作成できませんでした (${response?.error || '不明なエラー'})`, true);
           }
       });
-      pingMenu.classList.add('hidden'); // メニューはすぐに閉じる
+      pingMenu.classList.add('hidden');
     });
     pingMenu.appendChild(option);
   });
