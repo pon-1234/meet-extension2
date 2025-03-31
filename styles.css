@@ -188,21 +188,6 @@
   opacity: 1;
 }
 
-/* --- 説明表示 --- */
-#ping-instructions {
-  position: fixed; /* 画面基準 */
-  bottom: 20px;
-  left: 80px; /* ボタンの右隣あたり */
-  background-color: rgba(31, 41, 55, 0.8); /* Reactの bg-gray-900 bg-opacity-80 */
-  color: white;
-  font-size: 12px; /* Reactの text-sm */
-  padding: 8px;    /* Reactの p-2 */
-  border-radius: 8px; /* Reactの rounded-lg */
-  z-index: 9999;
-  max-width: 200px;
-}
-#ping-instructions .font-bold { font-weight: bold; }
-#ping-instructions .mb-1 { margin-bottom: 4px; } /* Reactの mb-1 */
 
 /* ログインプロンプト (もし使うなら) */
 #ping-login-prompt {

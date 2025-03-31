@@ -274,16 +274,6 @@ function setupUI() {
   pinsArea.id = 'pins-area';
   container.appendChild(pinsArea);
 
-  // 説明表示
-  const instructions = document.createElement('div');
-  instructions.id = 'ping-instructions';
-  instructions.innerHTML = `
-    <div class="font-bold mb-1">使い方:</div>
-    <div>1. 左下の[!]ボタンでメニュー開閉</div>
-    <div>2. アイコンを選択してピン作成</div>
-    <div>3. 表示されたピンをクリックして削除</div>
-  `; // 日本語修正
-  container.appendChild(instructions);
 
   document.body.appendChild(container);
   document.removeEventListener('click', handleDocumentClickForMenu);
