@@ -1,11 +1,9 @@
 // content.js
 
-// --- グローバル変数 --- (変更なし)
+// --- グローバル変数 ---
 let currentUser = null;
 let currentMeetingId = null;
-let database = null;
-let auth = null;
-let pinsRef = null;
+// database, auth, pinsRef は content.js では不要になる
 let userPins = {};
 
 // ピンの種類定義
@@ -13,8 +11,9 @@ const PING_DEFINITIONS = {
     danger: { icon: '⚠️', label: '危険' },
     onMyWay: { icon: '➡️', label: '向かっている' },
     question: { icon: '❓', label: '質問' },
-    assist: { icon: '🆘', label: '助けて' } // 日本語ラベル修正
+    assist: { icon: '🆘', label: '助けて' }
 };
+
 // メニューの配置計算用
 const PING_MENU_POSITIONS = {
     danger: { angle: -90, distance: 70 },  // 上
@@ -23,36 +22,17 @@ const PING_MENU_POSITIONS = {
     assist: { angle: 180, distance: 70 }   // 左
 };
 
-// --- Firebase 初期化/認証関連 ---
-function initializeFirebase() {
+// --- 初期化/認証関連 ---
+function initializeContentScript() {
   try {
-    // firebaseConfig は firebase-config.js でグローバルに定義されている前提
-    if (typeof firebase === 'undefined' || typeof firebaseConfig === 'undefined') {
-      console.error('Firebase SDK または設定が読み込まれていません。');
-      showMessage('エラー: 初期化に失敗しました。');
-      return;
-    }
-
-    // Content Scriptでも明示的に初期化する
-    if (!firebase.apps.length) {
-      console.log('Content script: Firebase App初期化中...');
-      firebase.initializeApp(firebaseConfig);
-      console.log('Content script: Firebase App初期化完了');
-    } else {
-      console.log('Content script: Firebase Appは既に初期化されています');
-    }
-
-    console.log('Content script: Firebase SDK/Config loaded.');
-
-    // 認証状態をBackground Scriptに問い合わせる
+    console.log('Content script: 初期化中...');
+    // Backgroundに認証状態を問い合わせる
     requestAuthStatusFromBackground();
-
-    // Meeting IDを検出
-    detectMeetingId();
-
+    // Meeting IDを検出 (URL監視も含む)
+    startObserver(); // DOM監視と初回検出を開始
   } catch (error) {
-    console.error('Content script Firebase 初期化処理エラー:', error);
-    showMessage('エラー: 初期化中に問題が発生しました。');
+    console.error('Content script 初期化処理エラー:', error);
+    showMessage('エラー: 初期化中に問題が発生しました。', true);
   }
 }
 
@@ -94,22 +74,55 @@ function handleAuthResponse(response) {
 }
 
 
+// Background Scriptからのメッセージ受信
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'authStatusChanged') {
-    console.log('Auth status changed notification received:', message.user);
-    handleAuthResponse(message); // 認証状態変更を処理
-    // 必要に応じてUIの再描画やリスナーの再設定を行う
-    if (message.user && currentMeetingId && !document.getElementById('lol-ping-container')) {
-        console.log("User logged in, meet active, UI missing. Setting up UI.");
-        setupUI();
-        setupPinsListener();
-    } else if (!message.user) {
-        cleanupUI();
-    }
-    sendResponse({ received: true });
-    return true;
+  console.log("Content script: Received message:", message);
+  switch (message.action) {
+    case 'authStatusChanged':
+      handleAuthResponse(message); // 認証状態の変更を処理
+      sendResponse({ received: true });
+      break;
+    // ★★★ Backgroundからピン追加通知 ★★★
+    case 'pinAdded':
+      if (message.data && message.data.pinId && message.data.pin) {
+        console.log("BackgroundからpinAddedを受信:", message.data.pinId);
+        renderPin(message.data.pinId, message.data.pin); // DOMに描画
+      } else {
+        console.warn("無効なpinAddedデータを受信:", message.data);
+      }
+      sendResponse({ received: true });
+      break;
+    // ★★★ Backgroundからピン削除通知 ★★★
+    case 'pinRemoved':
+      if (message.data && message.data.pinId) {
+        console.log("BackgroundからpinRemovedを受信:", message.data.pinId);
+        const pinElement = document.getElementById(`pin-${message.data.pinId}`);
+        if (pinElement) {
+           // アニメーション付きで削除
+           pinElement.classList.remove('show');
+           pinElement.classList.add('hide');
+           setTimeout(() => {
+               pinElement.remove();
+               console.log('DOMからピン要素を削除:', message.data.pinId);
+           }, 300);
+        }
+      } else {
+           console.warn("無効なpinRemovedデータを受信:", message.data);
+      }
+      sendResponse({ received: true });
+      break;
+     // ★★★ Backgroundから権限エラー通知 ★★★
+     case 'permissionError':
+        showMessage("エラー: データベースへのアクセス権限がありません。管理者に確認してください。", true);
+        sendResponse({ received: true });
+        break;
+    default:
+      // 知らないアクションは無視
+      sendResponse({ received: false, message: "Unknown action" });
+      break;
   }
-  // ... 他のアクション
+  // 非同期応答を示すために true を返す
+   return true;
 });
 
 // --- Meet関連処理 ---
@@ -120,44 +133,34 @@ function detectMeetingId() {
   const newMeetingId = match ? match[1] : null;
 
   if (newMeetingId !== currentMeetingId) {
-    console.log(`Meeting ID changed from ${currentMeetingId} to ${newMeetingId}`);
-    cleanupUI(); // UIとリスナーをクリア
+    console.log(`Meeting IDが ${currentMeetingId} から ${newMeetingId} に変更されました`);
+    cleanupUI(); // UIをクリア
     currentMeetingId = newMeetingId;
-    if (currentMeetingId && currentUser) {
-      console.log("New meeting detected, user already logged in. Starting ping system.");
-      startPingSystem();
-    } else if (currentMeetingId && !currentUser){
-        console.log("New meeting detected, user not logged in. Requesting auth status.");
-        requestAuthStatusFromBackground(); // ログインしてなければ確認
+    if (currentMeetingId) {
+        // BackgroundにMeetページがロードされたことを通知
+        chrome.runtime.sendMessage({ action: 'meetPageLoaded' })
+            .catch(e => console.error("meetPageLoadedメッセージ送信エラー:", e));
+        // ユーザーが既にログイン済みならUI表示
+        if (currentUser) {
+            console.log("新しいミーティングを検出、ユーザーは既にログイン済み。UIを設定します。");
+            setupUI();
+        } else {
+             console.log("新しいミーティングを検出、ユーザーはログインしていません。認証状態を確認中。");
+        }
     } else {
-         console.log("Exited Meet or invalid URL.");
+         console.log("Meetを退出したか、無効なURLです。");
     }
-  } else if (currentMeetingId && currentUser && !document.getElementById('lol-ping-container')) {
-      // 同じMeetページだがUIがない場合
-      console.log("Same meeting ID, UI missing. Setting up UI.");
-      setupUI();
-      setupPinsListener();
   } else {
-      console.log("Meeting ID check: No significant change detected.");
+       console.log("Meeting IDチェック: 重要な変更は検出されません。");
+       // 同じページでリロードされた場合など、UIが存在しないか確認
+       if (currentMeetingId && currentUser && !document.getElementById('lol-ping-container')) {
+           console.log("同じMeeting ID、UIが見つかりません。UIを設定します。");
+           setupUI();
+           // Backgroundに通知してリスナーを再確認させることも可能
+           chrome.runtime.sendMessage({ action: 'meetPageLoaded' })
+               .catch(e => console.error("meetPageLoadedメッセージ送信エラー:", e));
+       }
   }
-}
-
-// --- ピンシステム初期化・開始 ---
-function startPingSystem() {
-  if (!currentUser) {
-    console.error('startPingSystem: User not authenticated.');
-    return;
-  }
-  if (!currentMeetingId) {
-    console.error('startPingSystem: Meeting ID not found.');
-     detectMeetingId(); // 再度検出を試みる
-     if (!currentMeetingId) return; // それでもなければ中断
-  }
-
-  console.log("startPingSystem: Initializing for meeting:", currentMeetingId);
-  setupUI(); // UI作成 (内部で存在チェック)
-  setupPinsListener(); // リスナー設定 (内部で重複防止)
-  showMessage(`ピンシステム起動 (${currentUser.displayName || currentUser.email.split('@')[0]})`);
 }
 
 // --- UI関連 ---
@@ -217,11 +220,28 @@ function setupUI() {
       option.style.left = '50%';
       option.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
     }
+    // ★★★ クリック時に Background にメッセージ送信 ★★★
     option.addEventListener('click', (event) => {
       event.stopPropagation();
-      console.log('Ping option clicked:', key); // ★ログ追加1
-      createPin(key);
-      pingMenu.classList.add('hidden');
+      console.log('Ping option clicked:', key);
+      // createPin 関数ではなくメッセージ送信
+      chrome.runtime.sendMessage({
+          action: 'createPing',
+          meetingId: currentMeetingId,
+          pingType: key
+      }, (response) => {
+          if (chrome.runtime.lastError) {
+              console.error("createPingメッセージ送信エラー:", chrome.runtime.lastError.message);
+              showMessage('エラー: ピンの作成に失敗しました。', true);
+          } else if (response && response.success) {
+              console.log("ピン作成リクエストが成功しました、pinId:", response.pinId);
+              showMessage(`ピン「${pingInfo.label}」を作成しました`);
+          } else {
+              console.error("ピンの作成に失敗しました:", response?.error, "コード:", response?.code);
+              showMessage(`エラー: ピンを作成できませんでした (${response?.error || '不明なエラー'})`, true);
+          }
+      });
+      pingMenu.classList.add('hidden'); // メニューはすぐに閉じる
     });
     pingMenu.appendChild(option);
   });
@@ -250,20 +270,22 @@ function setupUI() {
 }
 
 function cleanupUI() {
-  console.log("cleanupUI: Attempting to remove UI...");
-  if (pinsRef) {
-      pinsRef.off();
-      pinsRef = null;
-      console.log("Detached Firebase pins listener during cleanup.");
+  console.log("cleanupUI: UIを削除しようとしています...");
+  // ★★★ Firebaseリスナーは Background で管理するのでここでは解除不要 ★★★
+  // Backgroundにクリーンアップを通知
+  if (currentMeetingId) {
+      chrome.runtime.sendMessage({ action: 'cleanupPins', meetingId: currentMeetingId })
+          .catch(e => console.error("cleanupPinsメッセージ送信エラー:", e));
   }
+  
   document.removeEventListener('click', handleDocumentClickForMenu);
 
   const container = document.getElementById('lol-ping-container');
   if (container) {
     container.remove();
-    console.log('ピンUIコンテナが削除されました'); // 日本語修正
+    console.log('ピンUIコンテナが削除されました');
   } else {
-    console.log("cleanupUI: UI container not found.");
+    console.log("cleanupUI: UIコンテナが見つかりません。");
   }
   const loginPrompt = document.getElementById('ping-login-prompt');
   if (loginPrompt) loginPrompt.remove();
@@ -315,149 +337,15 @@ function showLoginPrompt() {
 }
 
 
-// --- Firebase Realtime Database 操作 ---
-
-function createPin(pingType) {
-  console.log(`createPin called with type: ${pingType}`); // ★ログ追加2
-  if (!currentUser || !currentMeetingId) {
-    console.error('ピンを作成できません: ユーザーがログインしていないか、ミーティングIDが見つかりません。'); // 日本語修正
-    showMessage('エラー: ピンを作成できません。ログイン状態を確認してください。', true); // 日本語修正
-    return;
-  }
-  const db = firebase.database();
-  if (!db) {
-    console.error("データベースが利用できません。Firebaseが初期化されていません。"); // 日本語修正
-    showMessage('エラー: データベース接続に問題があります。', true); // 日本語修正
-    return;
-  }
-  const currentPinsRef = db.ref(`meetings/${currentMeetingId}/pins`);
-
-  const pin = {
-    type: pingType,
-    createdAt: firebase.database.ServerValue.TIMESTAMP,
-    createdBy: {
-      uid: currentUser.uid,
-      displayName: currentUser.displayName || currentUser.email.split('@')[0],
-      email: currentUser.email
-    },
-    // expiresAt はDBルールかCloud Functionsで処理する方が堅牢
-  };
-
-  const newPinRef = currentPinsRef.push();
-  console.log("Attempting to set pin data to Firebase:", pin); // ★ログ追加3
-  newPinRef.set(pin)
-    .then(() => {
-      console.log('ピンが作成されました:', newPinRef.key); // 日本語修正
-      showMessage(`ピン「${PING_DEFINITIONS[pingType]?.label || pingType}」を作成しました`); // 日本語ラベル使用
-      // 自分のピン追跡は任意
-      // userPins[newPinRef.key] = true;
-    })
-    .catch(error => {
-      console.error('ピンの作成エラー:', error); // 日本語修正
-      console.error('Firebase set error in createPin:', error); // ★ログ追加4
-      console.error('Error details - code:', error.code, 'message:', error.message);
-      console.error('Error full details:', JSON.stringify(error, null, 2));
-      showMessage(`エラー: ピンを作成できませんでした: ${error.message} (${error.code})`, true); // 日本語修正
-    });
-}
-
-function removePinFromDb(pinId) {
-    if (!currentUser || !currentMeetingId) return;
-    const db = firebase.database();
-    if (!db) return;
-    const pinRef = db.ref(`meetings/${currentMeetingId}/pins/${pinId}`);
-
-    pinRef.once('value')
-      .then(snapshot => {
-        const pin = snapshot.val();
-        // Firebaseのデータ構造に合わせて createdBy.uid で比較
-        if (pin && pin.createdBy && pin.createdBy.uid === currentUser.uid) {
-          return pinRef.remove();
-        } else if (pin) {
-          console.warn('他のユーザーのピンを削除しようとしました。'); // 日本語修正
-          showMessage('他のユーザーのピンは削除できません。', true); // isError = true
-          return Promise.reject('Permission denied');
-        } else {
-          console.warn('削除対象のピンが見つかりません:', pinId); // 日本語修正
-          return Promise.reject('Pin not found');
-        }
-      })
-      .then(() => {
-        console.log('ピンをDBから削除しました:', pinId); // 日本語修正
-        showMessage('ピンを削除しました'); // 日本語修正
-      })
-      .catch(error => {
-        if (error !== 'Permission denied or Pin not found') {
-          console.error('ピンのDB削除エラー:', error); // 日本語修正
-          showMessage('エラー: ピンの削除に失敗しました。', true); // 日本語修正
-        }
-      });
-}
-
-function setupPinsListener() {
-  if (!currentUser || !currentMeetingId) {
-    console.log("setupPinsListener: Skipping, no user or meeting ID.");
-    return;
-  }
-  const db = firebase.database();
-  if (!db) {
-    console.error("setupPinsListener: Database not available.");
-    return;
-  }
-  const newPinsRef = db.ref(`meetings/${currentMeetingId}/pins`);
-
-  if (pinsRef) {
-    console.log("setupPinsListener: Detaching previous listener.");
-    pinsRef.off();
-  }
-  pinsRef = newPinsRef;
-  console.log("Setting up new pins listener for:", currentMeetingId);
-
-  pinsRef.on('child_added', (snapshot) => {
-    const pinId = snapshot.key;
-    const pin = snapshot.val();
-    console.log('Firebase child_added event triggered:', pinId, pin); // ★ログ追加5
-    if (!pin || !pin.createdBy) return; // createdBy がないデータは無視
-    console.log('Pin added (child_added):', pinId, pin);
-    renderPin(pinId, pin);
-  }, (error) => {
-    console.error('Error listening for child_added:', error);
-    console.error('Firebase child_added listener error:', error); // ★ログ追加6
-    console.error('Listener error details - code:', error.code, 'message:', error.message);
-    console.error('Listener error full details:', JSON.stringify(error, null, 2));
-    showMessage(`エラー: ピンの受信に失敗しました: ${error.message} (${error.code})`, true); // 日本語修正
-  });
-
-  pinsRef.on('child_removed', (snapshot) => {
-    const pinId = snapshot.key;
-    console.log('Pin removed (child_removed):', pinId);
-    const pinElement = document.getElementById(`pin-${pinId}`);
-    if (pinElement) {
-       pinElement.classList.remove('show');
-       pinElement.classList.add('hide');
-       setTimeout(() => {
-           pinElement.remove();
-           console.log('DOMからピン要素を削除:', pinId); // 日本語修正
-       }, 300);
-      if (userPins[pinId]) {
-        delete userPins[pinId];
-      }
-    }
-  }, (error) => {
-    console.error('Error listening for child_removed:', error);
-    console.error('Removed listener error details - code:', error.code, 'message:', error.message);
-    console.error('Removed listener error full details:', JSON.stringify(error, null, 2));
-    showMessage(`エラー: ピンの削除通知に失敗しました: ${error.message} (${error.code})`, true);
-  });
-}
+// --- ピン表示関連の関数 ---
 
 // --- 表示関連 ---
 
 function renderPin(pinId, pin) {
-  console.log(`renderPin called for pinId: ${pinId}`, pin); // ★ログ追加7
+  console.log(`ピンをレンダリング: ${pinId}`, pin);
   const pinsArea = document.getElementById('pins-area');
   if (!pinsArea) {
-    console.error("renderPin: #pins-area not found.");
+    console.error("renderPin: #pins-areaが見つかりません");
     return;
   }
   const existingPin = document.getElementById(`pin-${pinId}`);
@@ -465,14 +353,17 @@ function renderPin(pinId, pin) {
     existingPin.remove();
   }
 
-  const pingInfo = PING_DEFINITIONS[pin.type] || { icon: '❓', label: '不明' }; // 日本語修正
+  const pingInfo = PING_DEFINITIONS[pin.type] || { icon: '❓', label: '不明' };
   const pinElement = document.createElement('div');
   pinElement.id = `pin-${pinId}`;
   pinElement.className = 'pin';
-  if (currentUser && pin.createdBy.uid === currentUser.uid) {
+  if (currentUser && pin.createdBy && pin.createdBy.uid === currentUser.uid) {
       pinElement.classList.add('my-pin');
   }
-  pinElement.dataset.createdBy = pin.createdBy.uid;
+  
+  if (pin.createdBy) {
+    pinElement.dataset.createdBy = pin.createdBy.uid;
+  }
 
   const iconDiv = document.createElement('div');
   iconDiv.className = 'pin-icon';
@@ -484,19 +375,42 @@ function renderPin(pinId, pin) {
 
   const labelDiv = document.createElement('div');
   labelDiv.className = 'pin-label';
-  labelDiv.textContent = pingInfo.label; // 日本語ラベル
+  labelDiv.textContent = pingInfo.label;
   detailsDiv.appendChild(labelDiv);
 
   const userDiv = document.createElement('div');
   userDiv.className = 'pin-user';
-  userDiv.textContent = pin.createdBy.displayName || '不明なユーザー'; // 日本語修正
+  userDiv.textContent = pin.createdBy?.displayName || '不明なユーザー';
   detailsDiv.appendChild(userDiv);
 
   pinElement.appendChild(detailsDiv);
 
-  if (currentUser && pin.createdBy.uid === currentUser.uid) {
-    pinElement.title = 'クリックして削除'; // 日本語修正
-    pinElement.addEventListener('click', () => removePinFromDb(pinId));
+  if (currentUser && pin.createdBy && pin.createdBy.uid === currentUser.uid) {
+    pinElement.title = 'クリックして削除';
+    // Backgroundにピン削除リクエストを送信
+    pinElement.addEventListener('click', () => {
+      chrome.runtime.sendMessage({
+        action: 'removePing',
+        meetingId: currentMeetingId,
+        pinId: pinId
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("removePingメッセージ送信エラー:", chrome.runtime.lastError.message);
+          showMessage('エラー: ピンの削除に失敗しました。', true);
+        } else if (response && response.success) {
+          console.log("ピン削除リクエストが成功しました");
+          // バックグラウンドからの通知を待たずにアニメーションを開始
+          pinElement.classList.remove('show');
+          pinElement.classList.add('hide');
+          setTimeout(() => {
+            pinElement.remove();
+          }, 300);
+        } else {
+          console.error("ピンの削除に失敗しました:", response?.error);
+          showMessage(`エラー: ピンを削除できませんでした (${response?.error || '不明なエラー'})`, true);
+        }
+      });
+    });
   }
 
   console.log("Pin element created, attempting to append:", pinElement); // ★ログ追加8
@@ -569,7 +483,7 @@ function startObserver() {
     });
 }
 
-initializeFirebase();
+// Firebaseの初期化は Background Script で行うため、ここでは呼び出さない
 startObserver();
 
 console.log('Meet LoL-Style Ping content script loaded.'); // 日本語修正
