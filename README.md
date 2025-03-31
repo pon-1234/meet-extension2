@@ -1,6 +1,6 @@
-# Meet LoL-Style Ping Extension
+# Meet Ping Extension
 
-Google Meet用のLoL（League of Legends）スタイルのピン機能を提供するChrome拡張機能です。会議中に素早く視覚的な合図を送ることができます。
+Google Meet用のピン機能を提供するChrome拡張機能です。会議中に素早く視覚的な合図を送ることができます。
 
 ## 機能
 
