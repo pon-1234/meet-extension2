@@ -54,6 +54,7 @@ function handleAuthResponse(response) {
         currentUser = user;
         // Meetページにいればシステムを開始/更新
         if (currentMeetingId) {
+            // ★★★ startPingSystem を呼び出す ★★★
             startPingSystem();
         } else {
             // Meet ID がまだ検出されていない可能性があるので検出を試みる
@@ -142,8 +143,9 @@ function detectMeetingId() {
             .catch(e => console.error("meetPageLoadedメッセージ送信エラー:", e));
         // ユーザーが既にログイン済みならUI表示
         if (currentUser) {
-            console.log("新しいミーティングを検出、ユーザーは既にログイン済み。UIを設定します。");
-            setupUI();
+            console.log("New meeting detected, user already logged in. Starting ping system.");
+            // ★★★ startPingSystem を呼び出す ★★★
+            startPingSystem();
         } else {
              console.log("新しいミーティングを検出、ユーザーはログインしていません。認証状態を確認中。");
         }
@@ -154,13 +156,33 @@ function detectMeetingId() {
        console.log("Meeting IDチェック: 重要な変更は検出されません。");
        // 同じページでリロードされた場合など、UIが存在しないか確認
        if (currentMeetingId && currentUser && !document.getElementById('lol-ping-container')) {
-           console.log("同じMeeting ID、UIが見つかりません。UIを設定します。");
-           setupUI();
-           // Backgroundに通知してリスナーを再確認させることも可能
+           console.log("Same meeting ID, UI missing. Setting up UI.");
+           // ★★★ startPingSystem を呼び出す ★★★
+           startPingSystem(); // UI がない場合もここで再生成を試みる
            chrome.runtime.sendMessage({ action: 'meetPageLoaded' })
                .catch(e => console.error("meetPageLoadedメッセージ送信エラー:", e));
        }
   }
+}
+
+// --- ピンシステム初期化・開始 (★この関数を元に戻す★) ---
+function startPingSystem() {
+  if (!currentUser) {
+    console.error('startPingSystem: ユーザーが認証されていません。');
+    return;
+  }
+  if (!currentMeetingId) {
+    console.error('startPingSystem: ミーティングIDが見つかりません。');
+    return;
+  }
+  console.log("startPingSystem: UIとリスナーを設定します for meeting:", currentMeetingId);
+
+  setupUI(); // UI作成/確認
+
+  // ★★★ setupPinsListener の呼び出しは削除 ★★★
+  // setupPinsListener(); // リスナー設定は Background が担当
+
+  showMessage(`ピンシステム起動 (${currentUser.displayName || currentUser.email.split('@')[0]})`);
 }
 
 // --- UI関連 ---
