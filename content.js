@@ -402,7 +402,7 @@ function renderPin(pinId, pin) {
     // Backgroundにピン削除リクエストを送信
     pinElement.addEventListener('click', () => {
       chrome.runtime.sendMessage({
-        action: 'removePing',
+        action: 'removePin',
         meetingId: currentMeetingId,
         pinId: pinId
       }, (response) => {
