@@ -355,7 +355,9 @@ function createPin(pingType) {
     .catch(error => {
       console.error('ピンの作成エラー:', error); // 日本語修正
       console.error('Firebase set error in createPin:', error); // ★ログ追加4
-      showMessage(`エラー: ピンを作成できませんでした: ${error.message}`, true); // 日本語修正
+      console.error('Error details - code:', error.code, 'message:', error.message);
+      console.error('Error full details:', JSON.stringify(error, null, 2));
+      showMessage(`エラー: ピンを作成できませんでした: ${error.message} (${error.code})`, true); // 日本語修正
     });
 }
 
@@ -421,7 +423,9 @@ function setupPinsListener() {
   }, (error) => {
     console.error('Error listening for child_added:', error);
     console.error('Firebase child_added listener error:', error); // ★ログ追加6
-    showMessage('エラー: ピンの受信に失敗しました。', true); // 日本語修正
+    console.error('Listener error details - code:', error.code, 'message:', error.message);
+    console.error('Listener error full details:', JSON.stringify(error, null, 2));
+    showMessage(`エラー: ピンの受信に失敗しました: ${error.message} (${error.code})`, true); // 日本語修正
   });
 
   pinsRef.on('child_removed', (snapshot) => {
@@ -441,6 +445,9 @@ function setupPinsListener() {
     }
   }, (error) => {
     console.error('Error listening for child_removed:', error);
+    console.error('Removed listener error details - code:', error.code, 'message:', error.message);
+    console.error('Removed listener error full details:', JSON.stringify(error, null, 2));
+    showMessage(`エラー: ピンの削除通知に失敗しました: ${error.message} (${error.code})`, true);
   });
 }
 
