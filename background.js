@@ -360,7 +360,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // インストール/アップデート時
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Meet LoL-Style Ping Extension がインストール/アップデートされました');
+  console.log('Meet Ping Extension がインストール/アップデートされました');
   initializeFirebase();
 });
 

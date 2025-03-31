@@ -155,7 +155,7 @@ function detectMeetingId() {
   } else {
        console.log("Meeting IDチェック: 重要な変更は検出されません。");
        // 同じページでリロードされた場合など、UIが存在しないか確認
-       if (currentMeetingId && currentUser && !document.getElementById('lol-ping-container')) {
+       if (currentMeetingId && currentUser && !document.getElementById('ping-container')) {
            console.log("Same meeting ID, UI missing. Setting up UI.");
            // ★★★ startPingSystem を呼び出す ★★★
            startPingSystem(); // UI がない場合もここで再生成を試みる
@@ -188,7 +188,7 @@ function startPingSystem() {
 // --- UI関連 ---
 
 function setupUI() {
-  if (document.getElementById('lol-ping-container')) {
+  if (document.getElementById('ping-container')) {
     console.warn("setupUI: UI container already exists. Aborting setup.");
     return;
   }
@@ -199,7 +199,7 @@ function setupUI() {
   console.log("setupUI: Creating UI elements...");
 
   const container = document.createElement('div');
-  container.id = 'lol-ping-container';
+  container.id = 'ping-container';
 
   // ピンメニューボタン
   const pingButton = document.createElement('button');
@@ -302,7 +302,7 @@ function cleanupUI() {
   
   document.removeEventListener('click', handleDocumentClickForMenu);
 
-  const container = document.getElementById('lol-ping-container');
+  const container = document.getElementById('ping-container');
   if (container) {
     container.remove();
     console.log('ピンUIコンテナが削除されました');
@@ -311,7 +311,7 @@ function cleanupUI() {
   }
   const loginPrompt = document.getElementById('ping-login-prompt');
   if (loginPrompt) loginPrompt.remove();
-  const messageArea = document.getElementById('lol-ping-message');
+  const messageArea = document.getElementById('ping-message');
   if (messageArea) messageArea.remove();
 }
 
@@ -455,7 +455,7 @@ function renderPin(pinId, pin) {
 
 let messageTimeout;
 function showMessage(text, isError = false) {
-  const messageArea = document.getElementById('lol-ping-message') || createMessageArea();
+  const messageArea = document.getElementById('ping-message') || createMessageArea();
   clearTimeout(messageTimeout);
   messageArea.textContent = text;
   messageArea.style.backgroundColor = isError ? 'rgba(244, 67, 54, 0.9)' : 'rgba(76, 175, 80, 0.9)';
@@ -466,10 +466,10 @@ function showMessage(text, isError = false) {
 }
 
 function createMessageArea() {
-    let area = document.getElementById('lol-ping-message');
+    let area = document.getElementById('ping-message');
     if (!area) {
         area = document.createElement('div');
-        area.id = 'lol-ping-message';
+        area.id = 'ping-message';
         document.body.appendChild(area);
     }
     return area;
@@ -508,4 +508,4 @@ function startObserver() {
 // Firebaseの初期化は Background Script で行うため、ここでは呼び出さない
 startObserver();
 
-console.log('Meet LoL-Style Ping content script loaded.'); // 日本語修正
+console.log('Meet Ping Extension content script loaded.'); // 日本語修正

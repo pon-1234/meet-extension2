@@ -1,5 +1,5 @@
 /* --- 全体コンテナ --- */
-#lol-ping-container {
+#ping-container {
   position: fixed; /* 画面に固定 */
   bottom: 0;
   left: 0;
@@ -8,7 +8,7 @@
   z-index: 10000; /* Meet UIより手前 */
   pointer-events: none; /* コンテナ自体はクリック不可 */
 }
-#lol-ping-container > * {
+#ping-container > * {
   pointer-events: auto; /* 子要素はクリック可能 */
 }
 
@@ -16,7 +16,7 @@
 #ping-menu-button {
   position: fixed; /* コンテナ基準ではなく画面基準 */
   bottom: 20px;
-  left: 20px;
+  left: 50px;
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -41,7 +41,7 @@
 #ping-menu {
   position: fixed; /* コンテナ基準ではなく画面基準 */
   bottom: 80px; /* ボタンの少し上 */
-  left: 34px; /* ボタンの中心あたり */
+  left: 74px; /* ボタンの左端(50px) + ボタンの半径(24px) */
   width: 170px; /* オプション配置を考慮したサイズ */
   height: 170px;
   /* background-color: rgba(55, 65, 81, 0.8); Reactの bg-gray-800 bg-opacity-80 */
@@ -49,7 +49,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: translate(-50%, 0); /* ボタン中心に合わせる微調整 */
   transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
   opacity: 1;
   visibility: visible;
@@ -170,7 +169,7 @@
 }
 
 /* --- 成功メッセージ --- */
-#lol-ping-message { /* ID 変更 */
+#ping-message { /* 成功メッセージ */
   position: fixed;
   bottom: 20px; /* Reactコードの bottom-20 より下 */
   left: 50%;
@@ -185,7 +184,7 @@
   transition: opacity 0.3s ease-in-out;
   pointer-events: none;
 }
-#lol-ping-message.show {
+#ping-message.show {
   opacity: 1;
 }
 
