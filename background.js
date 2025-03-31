@@ -301,7 +301,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return true; // 非同期応答を示す
 
       // ★★★ ピン削除リクエスト処理 ★★★
-      case 'removePin':
+      case 'removePing':
           if (!currentUser) {
               sendResponse({ success: false, error: "認証されていません" });
               break;
