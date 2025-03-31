@@ -19,7 +19,7 @@ const PING_MENU_POSITIONS = {
     danger: { angle: -90, distance: 70 },  // 上
     onMyWay: { angle: 0, distance: 70 },   // 右
     question: { angle: 90, distance: 70 },  // 下
-    assist: { angle: 180, distance: 50 }   // 左 - 距離を短くして右に寄せる
+    assist: { angle: 180, distance: 70 }   // 左
 };
 
 // --- 初期化/認証関連 ---
