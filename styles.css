@@ -71,9 +71,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 14px;
   z-index: 1; /* オプションより手前 */
+}
+
+#ping-center img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 /* ピンオプション */
@@ -96,8 +100,15 @@
 
 /* オプション内のアイコン */
 .ping-option .ping-icon {
-  font-size: 24px; /* Reactコードの size={24} 相当 */
-  /* アイコンの色は絵文字依存、または個別に指定 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ping-option .ping-icon img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 /* オプション内のラベルは表示しない */
 .ping-option .ping-label {
@@ -151,7 +162,14 @@
 /* ピン内のアイコン */
 .pin .pin-icon {
   margin-right: 8px; /* Reactの mr-2 */
-  font-size: 20px; /* 少し小さめ */
+  display: flex;
+  align-items: center;
+}
+
+.pin .pin-icon img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 /* ピン内の詳細 */

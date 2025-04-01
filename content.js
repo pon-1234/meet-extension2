@@ -8,10 +8,10 @@ let userPins = {};
 
 // ピンの種類定義
 const PING_DEFINITIONS = {
-    danger: { icon: '⚠️', label: '危険' },
-    onMyWay: { icon: '➡️', label: '向かっている' },
-    question: { icon: '❓', label: '質問' },
-    assist: { icon: '🆘', label: '助けて' }
+    danger: { icon: chrome.runtime.getURL('icons/danger.png'), label: '危険' },
+    onMyWay: { icon: chrome.runtime.getURL('icons/onMyWay.png'), label: '向かっている' },
+    question: { icon: chrome.runtime.getURL('icons/question.png'), label: '質問' },
+    assist: { icon: chrome.runtime.getURL('icons/assist.png'), label: '助けて' }
 };
 
 // メニューの配置計算用
@@ -216,7 +216,12 @@ function setupUI() {
 
   const pingCenter = document.createElement('div');
   pingCenter.id = 'ping-center';
-  pingCenter.textContent = 'PING';
+  const centerIcon = document.createElement('img');
+  centerIcon.src = chrome.runtime.getURL('icons/center-pin.png');
+  centerIcon.alt = 'PING';
+  centerIcon.width = 32; // 少し大きめのサイズ
+  centerIcon.height = 32;
+  pingCenter.appendChild(centerIcon);
   pingMenu.appendChild(pingCenter);
 
   // ピンオプション
@@ -230,7 +235,12 @@ function setupUI() {
 
     const iconDiv = document.createElement('div');
     iconDiv.className = 'ping-icon';
-    iconDiv.textContent = pingInfo.icon; // 絵文字アイコン
+    const iconImg = document.createElement('img');
+    iconImg.src = pingInfo.icon;
+    iconImg.alt = pingInfo.label;
+    iconImg.width = 24;
+    iconImg.height = 24;
+    iconDiv.appendChild(iconImg);
     option.appendChild(iconDiv);
 
     if (posInfo) {
@@ -379,7 +389,12 @@ function renderPin(pinId, pin) {
 
   const iconDiv = document.createElement('div');
   iconDiv.className = 'pin-icon';
-  iconDiv.textContent = pingInfo.icon;
+  const iconImg = document.createElement('img');
+  iconImg.src = pingInfo.icon;
+  iconImg.alt = pingInfo.label;
+  iconImg.width = 24;
+  iconImg.height = 24;
+  iconDiv.appendChild(iconImg);
   pinElement.appendChild(iconDiv);
 
   const detailsDiv = document.createElement('div');
