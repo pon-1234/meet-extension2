@@ -1,13 +1,14 @@
-// Firebase初期化とバックグラウンド処理
+// background.js
 
 // Firebase SDKと設定ファイルをインポート
 try {
   importScripts(
-    'firebase/firebase-app-compat.js',
-    'firebase/firebase-auth-compat.js',
-    'firebase/firebase-database-compat.js',
-    'firebase-config.js' // 設定ファイルを追加
+    './firebase/firebase-app-compat.js',
+    './firebase/firebase-auth-compat.js',
+    './firebase/firebase-database-compat.js',
+    './firebase-config.js' // 設定ファイルを追加
   );
+  console.log('BG: Firebase SDKとConfigのインポートに成功しました');
 } catch (e) { console.error('Firebase SDK/Config Import Error:', e); }
 
 let firebaseInitialized = false;
@@ -15,9 +16,14 @@ let auth = null;
 let database = null; // Database インスタンスを保持
 let currentUser = null;
 let activeListeners = {}; // { meetingId: listenerRef }
+let persistencePromise = null; // 永続性設定の Promise を保持 ★追加
 
 function initializeFirebase() {
   console.log('BG: Firebaseを初期化中...');
+  
+  // 常に有効なPromiseを返すための変数を定義
+  let initPromise;
+  
   if (!firebaseInitialized && typeof firebase !== 'undefined' && typeof firebaseConfig !== 'undefined') {
     try {
       if (!firebase.apps.length) {
@@ -29,12 +35,61 @@ function initializeFirebase() {
       }
       auth = firebase.auth();
       database = firebase.database(); // Database インスタンス取得
-      firebaseInitialized = true;
-      console.log('BG: Firebase Auth/Databaseインスタンスを取得しました');
-      setupAuthListener();
-    } catch (error) { console.error('BG: Firebase初期化エラー:', error); }
-  } else if (firebaseInitialized) { console.log("BG: Firebaseは既に初期化済みです"); }
-  else { console.error("BG: Firebase SDKまたは設定が読み込まれていません"); }
+
+      // ★★★ 永続性を 'local' に設定 ★★★
+      try {
+        console.log('BG: 永続性設定を開始します...');
+        
+        // 永続性設定のPromiseを作成
+        initPromise = auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+          .then(() => {
+            console.log('BG: 永続性を LOCAL (通常 IndexedDB) に設定しました');
+            firebaseInitialized = true;
+            console.log('BG: Firebase Auth/Databaseインスタンスを取得しました');
+            setupAuthListener();
+            return true; // Promiseの結果としてtrueを返す
+          })
+          .catch((error) => {
+            console.error('BG: 永続性設定エラー:', error);
+            console.error('BG: エラーコード:', error.code);
+            console.error('BG: エラーメッセージ:', error.message);
+            // エラーが発生した場合も初期化を進める
+            firebaseInitialized = true;
+            setupAuthListener();
+            // エラーをプロパゲートしないように、完了した結果を返す
+            return { success: false, error: error };
+          });
+        
+        // persistencePromiseを更新
+        persistencePromise = initPromise;
+        
+      } catch (error) {
+        console.error('BG: 永続性設定の試行中に例外が発生しました:', error);
+        firebaseInitialized = true;
+        setupAuthListener();
+        // 例外が発生した場合は、完了済みのPromiseを作成
+        initPromise = Promise.resolve({ success: false, error: error });
+      }
+      // ★★★ ここまで ★★★
+
+    } catch (error) { 
+      console.error('BG: Firebase初期化エラー:', error);
+      // Firebase初期化エラーの場合も、完了済みのPromiseを作成
+      initPromise = Promise.resolve({ success: false, error: error });
+    }
+  } else if (firebaseInitialized) { 
+    console.log("BG: Firebaseは既に初期化済みです"); 
+    // 既に初期化済みの場合は、成功を返すPromiseを作成
+    initPromise = Promise.resolve({ success: true });
+  }
+  else { 
+    console.error("BG: Firebase SDKまたは設定が読み込まれていません"); 
+    // SDKが読み込まれていない場合は、エラーを返すPromiseを作成
+    initPromise = Promise.resolve({ success: false, error: new Error("Firebase SDKまたは設定が読み込まれていません") });
+  }
+  
+  // 常に有効なPromiseを返す
+  return initPromise || Promise.resolve({ success: false, error: new Error("不明な初期化エラー") });
 }
 
 function setupAuthListener() {
@@ -239,28 +294,37 @@ function signInWithGoogle() {
 
 // --- メッセージリスナー (Content Scriptからの要求処理) ---
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  initializeFirebase();
-  if (!firebaseInitialized) {
-      sendResponse({ success: false, error: "Firebaseが初期化されていません" });
-      return true;
-  }
+  // initializeFirebase を呼び出し、完了を待ってから処理を開始
+  initializeFirebase()
+    .then((result) => {
+      // 初期化結果をチェック
+      if (result && result.error) {
+        console.error("BG: Firebase初期化結果にエラーがあります:", result.error);
+      }
+      
+      // 永続性設定後 (成功またはエラー後) の処理
+      if (!firebaseInitialized) {
+          sendResponse({ success: false, error: "Firebaseの初期化に失敗しました" });
+          return; // Promise 内なので return true は不要
+      }
 
-  switch (message.action) {
-      case 'getAuthStatus':
-          sendResponse({ user: currentUser });
-          break;
-      case 'requestLogin':
-          signInWithGoogle()
-              .then(success => sendResponse({ started: success }))
-              .catch(error => sendResponse({ started: false, error: error.message }));
-          return true; // 非同期応答を示す
-      case 'requestLogout':
-          if (auth) {
-              auth.signOut()
-                  .then(() => sendResponse({ success: true }))
-                  .catch(error => sendResponse({ success: false, error: error.message }));
-          } else { sendResponse({ success: false, error: "Authが初期化されていません" }); }
-          return true; // 非同期応答を示す
+      // 既存の switch 文の処理をここに入れる
+      switch (message.action) {
+          case 'getAuthStatus':
+              sendResponse({ user: currentUser });
+              break; // 同期応答
+          case 'requestLogin':
+              signInWithGoogle()
+                  .then(success => sendResponse({ started: success }))
+                  .catch(error => sendResponse({ started: false, error: error.message }));
+              return true; // 非同期応答を示す ★重要★
+          case 'requestLogout':
+              if (auth) {
+                  auth.signOut()
+                      .then(() => sendResponse({ success: true }))
+                      .catch(error => sendResponse({ success: false, error: error.message }));
+              } else { sendResponse({ success: false, error: "Authが初期化されていません" }); }
+              return true; // 非同期応答を示す ★重要★
 
       // ★★★ ピン作成リクエスト処理 ★★★
       case 'createPing':
@@ -298,7 +362,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   console.error('ピン作成エラー完全詳細:', JSON.stringify(error, null, 2));
                   sendResponse({ success: false, error: error.message, code: error.code });
               });
-          return true; // 非同期応答を示す
+          return true; // 非同期応答を示す ★重要★
 
       // ★★★ ピン削除リクエスト処理 ★★★
       case 'removePing':
@@ -330,7 +394,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   console.error('ピン削除エラー完全詳細:', JSON.stringify(error, null, 2));
                   sendResponse({ success: false, error: error.message });
               });
-          return true; // 非同期応答を示す
+          return true; // 非同期応答を示す ★重要★
 
         // ★★★ Meetページが開かれた/更新されたことを通知 ★★★
        case 'meetPageLoaded':
@@ -353,17 +417,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           console.warn("BG: 不明なメッセージアクション:", message.action);
           sendResponse({ success: false, error: "不明なアクション" });
           break; // 同期応答
-  }
-    // 非同期応答を示すために true を返さなかった場合は、ここで false を返すか何もしない
-    // return false;
+      }
+      // 非同期応答 (return true) しなかった場合のフォールバック
+      // (同期応答の場合は暗黙的に false が返る)
+    })
+    .catch(error => {
+      // initializeFirebase の .catch でハンドルされなかったエラーなど
+      console.error("BG: メッセージ処理中の初期化/永続性エラー:", error);
+      console.error("BG: エラーの詳細情報:", JSON.stringify({
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      }, null, 2));
+      sendResponse({ 
+        success: false, 
+        error: `Firebase 初期化/永続性エラー: ${error.message || '不明なエラー'}`,
+        code: error.code || 'UNKNOWN_ERROR'
+      });
+    });
+
+  // ★★★ 非同期処理を行うため、常に true を返す必要がある ★★★
+  return true;
 });
 
 // インストール/アップデート時
 chrome.runtime.onInstalled.addListener(() => {
   console.log('Meet Ping Extension がインストール/アップデートされました');
-  initializeFirebase();
+  initializeFirebase(); // ここで呼ぶのは良いが、完了を待つ必要はない
 });
 
 // Service Worker起動時
-initializeFirebase();
+initializeFirebase(); // Service Worker 起動時に初期化を開始
 console.log("Background service worker started/restarted.");
+
+// --- signInWithGoogle や DBリスナー関連の関数は変更なし ---
+function signInWithGoogle() {
+  // ... (既存のコード) ...
+}
+function startDbListener(meetingId) {
+  // ... (既存のコード) ...
+}
+// ... 他の関数 ...
