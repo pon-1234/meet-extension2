@@ -8,9 +8,9 @@ let userPins = {};
 
 // ピンの種類定義
 const PING_DEFINITIONS = {
-    danger: { icon: chrome.runtime.getURL('icons/danger.png'), label: '危険' },
-    onMyWay: { icon: chrome.runtime.getURL('icons/onMyWay.png'), label: '向かっている' },
-    question: { icon: chrome.runtime.getURL('icons/question.png'), label: '質問' },
+    danger: { icon: chrome.runtime.getURL('icons/danger.png'), label: '撤退' },
+    onMyWay: { icon: chrome.runtime.getURL('icons/onMyWay.png'), label: '話します' },
+    question: { icon: chrome.runtime.getURL('icons/question.png'), label: '疑問' },
     assist: { icon: chrome.runtime.getURL('icons/assist.png'), label: '助けて' }
 };
 

@@ -37,7 +37,7 @@
     "identity"
   ],
   "oauth2": {
-    "client_id": "217193969712-t87eluilmrkiob9rfcn5n7eik84i1s76.apps.googleusercontent.com",
+    "client_id": "217193969712-f69a48ensn9p2f48r48f3h5bq5moukar.apps.googleusercontent.com",
     "scopes": ["https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"]
   },
   "host_permissions": [
