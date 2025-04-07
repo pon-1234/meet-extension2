@@ -35,7 +35,7 @@
     "tabs"
   ],
   "oauth2": {
-    "client_id": "217193969712-vog3is28rugd12mcr2cnvls5eobm5de4.apps.googleusercontent.com",
+    "client_id": "chrome-extension://kkknkmkcieibhefciffhdkkghmpaeaeg",
     "scopes": ["https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"]
   },
   "host_permissions": [
