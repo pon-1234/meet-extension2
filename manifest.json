@@ -23,24 +23,20 @@
     {
       "matches": ["*://meet.google.com/*"],
       "js": [
-        // ★★★ Firebase SDK を削除 ★★★
-        // "firebase/firebase-app-compat.js",
-        // "firebase/firebase-auth-compat.js",
-        // "firebase/firebase-database-compat.js",
-        "firebase-config.js", // COMPANY_DOMAIN のために残す (BGから渡す場合は削除可)
+        "firebase-config.js",
         "content.js"
       ],
       "css": ["styles.css"],
-      "run_at": "document_idle" // 読み込みタイミングを少し遅らせる
+      "run_at": "document_idle"
     }
   ],
   "permissions": [
     "storage",
     "identity",
-    "tabs" // ★★★ chrome.tabs.onUpdated を使うために追加 ★★★
+    "tabs"
   ],
   "oauth2": {
-    "client_id": "217193969712-f69a48ensn9p2f48r48f3h5bq5moukar.apps.googleusercontent.com", // ★★★ 必ず正しい Chrome アプリ用 Client ID にしてください ★★★
+    "client_id": "217193969712-vog3is28rugd12mcr2cnvls5eobm5de4.apps.googleusercontent.com",
     "scopes": ["https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"]
   },
   "host_permissions": [
