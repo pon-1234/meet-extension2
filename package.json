@@ -1,0 +1,27 @@
+{
+  "name": "meet-extension",
+  "version": "1.0.0",
+  "description": "Google Meet用のピン機能を提供するChrome拡張機能です。会議中に素早く視覚的な合図を送ることができます。",
+  "main": "background.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack --config webpack.config.js",
+    "watch": "webpack --watch --config webpack.config.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pon-1234/meet-extension.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pon-1234/meet-extension/issues"
+  },
+  "homepage": "https://github.com/pon-1234/meet-extension#readme",
+  "dependencies": {
+    "firebase": "^11.6.0",
+    "webpack": "^5.98.0",
+    "webpack-cli": "^6.0.1"
+  }
+}

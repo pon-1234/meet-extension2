@@ -1,0 +1,94 @@
+body {
+  font-family: 'Roboto', sans-serif;
+  width: 320px;
+  margin: 0;
+  padding: 16px;
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.container {
+  background-color: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+  font-size: 18px;
+  color: #4285F4;
+  margin-top: 0;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+h2 {
+  font-size: 16px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+#status {
+  background-color: #e8f0fe;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+button {
+  background-color: #4285F4;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-top: 8px;
+  transition: background-color 0.3s;
+}
+
+button:hover {
+  background-color: #3367D6;
+}
+
+#logout-button {
+  background-color: #f44336;
+}
+
+#logout-button:hover {
+  background-color: #d32f2f;
+}
+
+.error {
+  color: #f44336;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+#instructions {
+  margin-top: 16px;
+  font-size: 14px;
+  border-top: 1px solid #e0e0e0;
+  padding-top: 16px;
+}
+
+#instructions ol {
+  padding-left: 24px;
+  margin-top: 8px;
+}
+
+#instructions li {
+  margin-bottom: 6px;
+}
+
+#user-info {
+  background-color: #e8f0fe;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+#user-email {
+  font-weight: bold;
+}

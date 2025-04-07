@@ -1,0 +1,222 @@
+/* --- 全体コンテナ --- */
+#ping-container {
+  position: fixed; /* 画面に固定 */
+  bottom: 0;
+  left: 0;
+  width: auto; /* 中身に合わせる */
+  height: auto;
+  z-index: 10000; /* Meet UIより手前 */
+  pointer-events: none; /* コンテナ自体はクリック不可 */
+}
+#ping-container > * {
+  pointer-events: auto; /* 子要素はクリック可能 */
+}
+
+/* --- ピンメニューボタン (!) --- */
+#ping-menu-button {
+  position: fixed; /* コンテナ基準ではなく画面基準 */
+  bottom: 20px;
+  left: 50px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: #4285f4; /* Reactコードの blue-600 相当 */
+  color: white;
+  border: none;
+  font-size: 24px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  transition: background-color 0.2s;
+  z-index: 10001; /* メニューより手前 */
+}
+#ping-menu-button:hover {
+  background-color: #3367d6; /* Reactコードの blue-700 相当 */
+}
+
+/* --- ピンメニュー (円形) --- */
+#ping-menu {
+  position: fixed; /* コンテナ基準ではなく画面基準 */
+  bottom: 80px; /* ボタンの少し上 */
+  left: 74px; /* ボタンの左端(50px) + ボタンの半径(24px) */
+  width: 170px; /* オプション配置を考慮したサイズ */
+  height: 170px;
+  /* background-color: rgba(55, 65, 81, 0.8); Reactの bg-gray-800 bg-opacity-80 */
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+  opacity: 1;
+  visibility: visible;
+  z-index: 10000;
+  pointer-events: auto; /* メニュー自体はクリック可能に */
+}
+#ping-menu.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ピンメニュー中央 ("PING") */
+#ping-center {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: rgba(55, 65, 81, 0.9); /* Reactの bg-gray-800 */
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1; /* オプションより手前 */
+}
+
+#ping-center img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+/* ピンオプション */
+.ping-option {
+  position: absolute; /* #ping-menu 内での絶対配置 */
+  width: 48px; /* Reactコードの w-12 */
+  height: 48px;/* Reactコードの h-12 */
+  border-radius: 50%;
+  background-color: rgba(55, 65, 81, 0.8); /* Reactの bg-gray-800 bg-opacity-80 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  /* transform はJSで設定 */
+}
+.ping-option:hover {
+  background-color: rgba(75, 85, 99, 0.9); /* Reactの hover:bg-gray-700 */
+}
+
+/* オプション内のアイコン */
+.ping-option .ping-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ping-option .ping-icon img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+/* オプション内のラベルは表示しない */
+.ping-option .ping-label {
+  display: none;
+}
+
+
+/* --- ピン表示エリア (右上) --- */
+#pins-area {
+  position: fixed; /* 画面基準 */
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* Reactコードの gap-2 */
+  max-width: 250px; /* 必要に応じて調整 */
+  z-index: 9998; /* ボタンやメニューよりは奥 */
+}
+
+/* 表示される個々のピン */
+.pin {
+  display: flex;
+  align-items: center;
+  background-color: rgba(31, 41, 55, 0.85); /* Reactの bg-gray-900 bg-opacity-80 */
+  border-radius: 8px; /* Reactの rounded-lg */
+  padding: 8px 12px; /* Reactの p-2 より少し広め */
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: default; /* 基本はクリック不可 */
+  width: fit-content;
+  opacity: 0; /* アニメーション用初期状態 */
+  transform: translateX(20px); /* アニメーション用初期状態 */
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+}
+.pin.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+.pin.hide { /* 削除時アニメーション用 */
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.pin.my-pin { /* 自分のピンはクリック可能 */
+  cursor: pointer;
+}
+.pin.my-pin:hover {
+  background-color: rgba(55, 65, 81, 0.9); /* 少し明るく */
+}
+
+/* ピン内のアイコン */
+.pin .pin-icon {
+  margin-right: 8px; /* Reactの mr-2 */
+  display: flex;
+  align-items: center;
+}
+
+.pin .pin-icon img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+/* ピン内の詳細 */
+.pin .pin-details {
+  display: flex;
+  flex-direction: column; /* ラベルとユーザー名を縦に */
+}
+.pin .pin-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+.pin .pin-user {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* --- 成功メッセージ --- */
+#ping-message { /* 成功メッセージ */
+  position: fixed;
+  bottom: 20px; /* Reactコードの bottom-20 より下 */
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(22, 163, 74, 0.9); /* Reactの bg-green-600 */
+  color: white;
+  padding: 8px 16px; /* Reactの px-4 py-2 */
+  border-radius: 8px; /* Reactの rounded-lg */
+  font-size: 14px;
+  z-index: 10002; /* 最前面に */
+  opacity: 0; /* アニメーション用 */
+  transition: opacity 0.3s ease-in-out;
+  pointer-events: none;
+}
+#ping-message.show {
+  opacity: 1;
+}
+
+
+/* ログインプロンプト (もし使うなら) */
+#ping-login-prompt {
+  position: fixed;
+  bottom: 20px;
+  left: 80px; /* ボタンの右隣あたり */
+  padding: 10px;
+  background-color: #fce8e6;
+  color: #c5221f;
+  border-radius: 8px;
+  z-index: 10000;
+  font-size: 14px;
+  cursor: pointer;
+}

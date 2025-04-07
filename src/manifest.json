@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "Meet Ping Extension",
+  "version": "1.0",
+  "description": "Google Meetでゲームのようなピン機能を提供する拡張機能",
+  "icons": {
+    "16": "../icons/icon16.png",
+    "48": "../icons/icon48.png",
+    "128": "../icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "../icons/icon16.png",
+      "48": "../icons/icon48.png",
+      "128": "../icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "../dist/background.bundle.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://meet.google.com/*"],
+      "js": [
+        "../dist/content.bundle.js"
+      ],
+      "css": ["../styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "identity",
+    "tabs"
+  ],
+  "oauth2": {
+    "client_id": "217193969712-vog3is28rugd12mcr2cnvls5eobm5de4.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"]
+  },
+  "host_permissions": [
+    "*://meet.google.com/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "web_accessible_resources": [{
+    "resources": ["../icons/*.png"],
+    "matches": ["*://meet.google.com/*"]
+  }]
+}
