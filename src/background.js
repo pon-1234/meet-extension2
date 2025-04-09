@@ -264,8 +264,8 @@ async function signInWithGoogle() {
       return { success: false, error: initResult.error };
     }
 
-    // Googleu8a8du8a3cu3092u30eau30afu30a8u30b9u30c8
-    const authResult = await new Promise((resolve, reject) => {
+    // Chrome Identity APIu3092u4f7fu7528u3057u3066Googleu30c8u30fcu30afu30f3u3092u53d6u5f97
+    const authToken = await new Promise((resolve, reject) => {
       chrome.identity.getAuthToken({ interactive: true }, (token) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
@@ -275,8 +275,9 @@ async function signInWithGoogle() {
       });
     });
 
-    // Googleu8a8du8a3cu60c5u5831u3067Firebaseu306bu30b5u30a4u30f3u30a4u30f3
-    const credential = GoogleAuthProvider.credential(null, authResult);
+    // Chrome Identity APIu304bu3089u53d6u5f97u3057u305fu30c8u30fcu30afu30f3u3067Firebaseu306bu30b5u30a4u30f3u30a4u30f3
+    // RecaptchaVerifieru3092u4f7fu7528u305bu305au306bu76f4u63a5u8a8du8a3c
+    const credential = GoogleAuthProvider.credential(null, authToken);
     await signInWithCredential(auth, credential);
     console.log("BG: Googleu30edu30b0u30a4u30f3u6210u529f");
     return { success: true };
