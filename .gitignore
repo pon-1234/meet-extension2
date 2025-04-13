@@ -1,0 +1,22 @@
+# ビルド生成物
+dist/
+
+# 依存関係
+node_modules/
+
+# 環境設定ファイル
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# エディタ設定
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS生成ファイル
+.DS_Store
+Thumbs.db
