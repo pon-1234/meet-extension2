@@ -17,14 +17,13 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.bundle.js"
   },
   "content_scripts": [
     {
       "matches": ["*://meet.google.com/*"],
       "js": [
-        "firebase-config.js",
-        "content.js"
+        "content.bundle.js"
       ],
       "css": ["styles.css"],
       "run_at": "document_idle"
@@ -45,7 +44,10 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "web_accessible_resources": [{
-    "resources": ["icons/*.png"],
+    "resources": [
+       "icons/*.png",
+       "sounds/*.mp3"
+     ],
     "matches": ["*://meet.google.com/*"]
   }]
 }
