@@ -33,15 +33,17 @@ function initializeContentScript() {
 
 function requestAuthStatusFromBackground() {
   chrome.runtime.sendMessage({ action: 'getAuthStatus' }, (response) => {
+    // ↓↓↓ lastError チェック ↓↓↓
     if (chrome.runtime.lastError) {
       if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
          console.warn("CS: Context invalidated before receiving initial auth status.");
       } else {
          console.error("CS: Error sending getAuthStatus message:", chrome.runtime.lastError.message);
       }
-      handleAuthResponse(null);
-      return;
+      handleAuthResponse(null); // エラー時は null で処理
+      return; // 処理中断
     }
+    // ↑↑↑ チェックここまで ↑↑↑
     handleAuthResponse(response);
   });
 }
@@ -89,19 +91,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
        showMessage("エラー: DBアクセス権限がありません。", true);
        sendResponse({ received: true });
        break;
-    case 'urlUpdated': // ★★★ URL更新メッセージの処理 ★★★
-       // console.log('CS: Received urlUpdated message:', message.url);
+    case 'urlUpdated':
        if (message.url && message.url !== currentUrl) {
-           currentUrl = message.url; // Content Script内のURLも更新
+           currentUrl = message.url;
            handleUrlUpdate(currentUrl);
        } else if (message.url === currentUrl && !document.getElementById('ping-container')) {
-           // 同じURLだがUIがない場合（リロードなど）もUI更新を試みる
            handleUrlUpdate(currentUrl);
        }
        sendResponse({ received: true });
        break;
     default:
-      // console.warn("CS: Received unknown action:", message.action);
       sendResponse({ received: false, message: "Unknown action" });
       break;
   }
@@ -117,30 +116,23 @@ function handleUrlUpdate(url) {
 
     console.log(`CS: Current Meeting ID: ${currentMeetingId}, New Meeting ID: ${newMeetingId}`);
 
-    // Meeting ID が変更された場合
     if (newMeetingId !== currentMeetingId) {
         console.log(`CS: Meeting ID changed from ${currentMeetingId} to ${newMeetingId}`);
-        cleanupUI(); // 古いUIを削除
+        cleanupUI();
         currentMeetingId = newMeetingId;
     }
 
-    // UI表示/非表示のロジック
     if (currentMeetingId && currentUser) {
-        // Meetページ内でログイン済み -> UI表示/更新
-        // console.log('CS: Starting ping system for meeting:', currentMeetingId);
-        startPingSystem(); // UI表示、メッセージ表示
+        startPingSystem();
         const loginPrompt = document.getElementById('ping-login-prompt');
-        if (loginPrompt) loginPrompt.remove(); // ログインプロンプト削除
+        if (loginPrompt) loginPrompt.remove();
     } else if (currentMeetingId && !currentUser) {
-        // Meetページ内だが未ログイン -> UI削除、ログインプロンプト表示
         console.log('CS: User not logged in for meeting:', currentMeetingId);
         cleanupUI();
         showLoginPrompt();
     } else {
-        // Meetページ以外 -> UI削除
-        // console.log('CS: Not on a valid Meet page or no meeting ID.');
         cleanupUI();
-        currentMeetingId = null; // Meeting IDもクリア
+        currentMeetingId = null;
     }
 }
 
@@ -149,7 +141,6 @@ function startPingSystem() {
   if (!currentUser) { console.error('CS: startPingSystem: User not authenticated.'); return; }
   if (!currentMeetingId) { console.error('CS: startPingSystem: Meeting ID not found.'); return; }
 
-  // UIがなければセットアップ
   if (!document.getElementById('ping-container')) {
      setupUI();
   }
@@ -159,13 +150,12 @@ function startPingSystem() {
 
 // --- UI関連 ---
 function setupUI() {
-  if (document.getElementById('ping-container')) { return; } // 既に存在すれば何もしない
+  if (document.getElementById('ping-container')) { return; }
   console.log("CS: setupUI: Creating UI elements...");
 
   const container = document.createElement('div');
   container.id = 'ping-container';
 
-  // --- ピンメニューボタン ---
   const pingButton = document.createElement('button');
   pingButton.id = 'ping-menu-button';
   pingButton.innerHTML = '<span>!</span>';
@@ -173,7 +163,6 @@ function setupUI() {
   pingButton.addEventListener('click', togglePingMenu);
   container.appendChild(pingButton);
 
-  // --- ピンメニュー ---
   const pingMenu = document.createElement('div');
   pingMenu.id = 'ping-menu';
   pingMenu.classList.add('hidden');
@@ -216,14 +205,14 @@ function setupUI() {
 
     option.addEventListener('click', (event) => {
       event.stopPropagation();
-      // console.log(`CS: Ping option ${key} clicked.`);
-      pingMenu.classList.add('hidden'); // 先に隠す
+      pingMenu.classList.add('hidden');
 
       chrome.runtime.sendMessage({
           action: 'createPing',
           meetingId: currentMeetingId,
-          pingType: key
+          pinData: { type: key }
       }, (response) => {
+          // ↓↓↓ lastError チェック ↓↓↓
           if (chrome.runtime.lastError) {
               if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
                   console.warn("CS: Context invalidated before receiving response for createPing.");
@@ -231,10 +220,10 @@ function setupUI() {
                   console.error("CS: Error sending createPing message:", chrome.runtime.lastError.message);
                   showMessage("エラー: ピンの作成依頼に失敗しました。", true);
               }
-              return;
+              return; // 処理中断
           }
+          // ↑↑↑ チェックここまで ↑↑↑
           if (response?.success) {
-              // console.log("CS: Ping creation requested successfully, pinId:", response.pinId);
               showMessage(`ピン「${pingInfo.label}」を作成しました`);
           } else {
               console.error("CS: Failed to create pin:", response?.error, "Code:", response?.code);
@@ -246,15 +235,13 @@ function setupUI() {
   });
   container.appendChild(pingMenu);
 
-  // --- ピン表示エリア ---
   const pinsArea = document.createElement('div');
   pinsArea.id = 'pins-area';
   container.appendChild(pinsArea);
 
-  // body が存在することを確認してから追加
   if (document.body) {
     document.body.appendChild(container);
-    document.removeEventListener('click', handleDocumentClickForMenu); // 重複登録防止
+    document.removeEventListener('click', handleDocumentClickForMenu);
     document.addEventListener('click', handleDocumentClickForMenu);
     console.log('CS: ピンUIが body に追加されました');
   } else {
@@ -263,7 +250,6 @@ function setupUI() {
 }
 
 function cleanupUI() {
-  // console.log("CS: cleanupUI: Removing UI elements...");
   document.removeEventListener('click', handleDocumentClickForMenu);
   const container = document.getElementById('ping-container');
   if (container) container.remove();
@@ -271,7 +257,6 @@ function cleanupUI() {
   if (loginPrompt) loginPrompt.remove();
   const messageArea = document.getElementById('ping-message');
   if (messageArea) messageArea.remove();
-  // ピン管理情報をクリア (タイマーはなくなった)
   userPins = {};
 }
 
@@ -294,15 +279,15 @@ function togglePingMenu(event) {
 }
 
 function showLoginPrompt() {
-  if (document.getElementById('ping-login-prompt')) return; // 既に表示済み
-  if (!window.location.href.includes("meet.google.com/")) return; // Meetページ以外は表示しない
-  if (!document.body) return; // body がなければ表示できない
+  if (document.getElementById('ping-login-prompt')) return;
+  if (!window.location.href.includes("meet.google.com/")) return;
+  if (!document.body) return;
 
   console.log("CS: Showing login prompt.");
   const prompt = document.createElement('div');
   prompt.id = 'ping-login-prompt';
   prompt.innerHTML = `ピン機能を使うにはログインが必要です。<button id="ping-login-button">ログイン</button>`;
-  document.body.appendChild(prompt); // 先に追加しないとボタンが取得できない
+  document.body.appendChild(prompt);
 
   const loginButton = document.getElementById('ping-login-button');
   if (loginButton) {
@@ -311,6 +296,7 @@ function showLoginPrompt() {
           loginButton.disabled = true;
           loginButton.textContent = '処理中...';
           chrome.runtime.sendMessage({ action: 'requestLogin' }, (response) => {
+              // ↓↓↓ lastError チェック ↓↓↓
               if (chrome.runtime.lastError) {
                   if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
                        console.warn("CS: Context invalidated before receiving response for requestLogin.");
@@ -318,16 +304,16 @@ function showLoginPrompt() {
                       console.error("CS: Login request error:", chrome.runtime.lastError.message);
                       showMessage('ログイン開始に失敗しました。', true);
                   }
-                  // ボタンの状態を元に戻す
-                  if (document.getElementById('ping-login-button')) { // まだ要素があれば
+                  if (document.getElementById('ping-login-button')) {
                      loginButton.disabled = false;
                      loginButton.textContent = 'ログイン';
                   }
-                  return;
+                  return; // 処理中断
               }
+              // ↑↑↑ チェックここまで ↑↑↑
               if (response?.started) {
                   showMessage('ログインプロセスを開始しました...');
-                  if(document.getElementById('ping-login-prompt')) prompt.remove(); // プロンプト削除
+                  if(document.getElementById('ping-login-prompt')) prompt.remove();
               } else {
                   showMessage(`ログインを開始できませんでした (${response?.error || '不明なエラー'})`, true);
                    if (document.getElementById('ping-login-button')) {
@@ -346,7 +332,7 @@ function showLoginPrompt() {
 function renderPin(pinId, pin) {
   const pinsArea = document.getElementById('pins-area');
   if (!pinsArea) { console.warn("CS: #pins-area not found."); return; }
-  removePinElement(pinId, false); // 更新の場合に備え、アニメーションなしで既存を削除
+  removePinElement(pinId, false);
 
   const pingInfo = PING_DEFINITIONS[pin.type] || { icon: '❓', label: '不明' };
   const pinElement = document.createElement('div');
@@ -357,7 +343,6 @@ function renderPin(pinId, pin) {
   }
   pinElement.dataset.createdBy = pin.createdBy?.uid || 'unknown';
 
-  // --- アイコン ---
   const iconDiv = document.createElement('div');
   iconDiv.className = 'pin-icon';
   const iconImg = document.createElement('img');
@@ -365,7 +350,6 @@ function renderPin(pinId, pin) {
   iconDiv.appendChild(iconImg);
   pinElement.appendChild(iconDiv);
 
-  // --- 詳細 (ラベルとユーザー名) ---
   const detailsDiv = document.createElement('div');
   detailsDiv.className = 'pin-details';
   const labelDiv = document.createElement('div');
@@ -376,32 +360,30 @@ function renderPin(pinId, pin) {
   detailsDiv.appendChild(userDiv);
   pinElement.appendChild(detailsDiv);
 
-  // --- 自分のピンのクリック処理 ---
   if (currentUser && pin.createdBy?.uid === currentUser.uid) {
     pinElement.title = 'クリックして削除';
     pinElement.addEventListener('click', () => {
       console.log(`CS: Requesting removal of my pin ${pinId}`);
       pinElement.classList.remove('show');
-      pinElement.classList.add('hide'); // 先に隠すアニメーション
+      pinElement.classList.add('hide');
 
       chrome.runtime.sendMessage({ action: 'removePing', meetingId: currentMeetingId, pinId: pinId }, (response) => {
+          // ↓↓↓ lastError チェック ↓↓↓
           if (chrome.runtime.lastError) {
              if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
                  console.warn("CS: Context invalidated before receiving response for removePing.");
-                 removePinElement(pinId, false); // 念のため即時削除
+                 removePinElement(pinId, false);
              } else {
                  console.error("CS: removePing message error:", chrome.runtime.lastError.message);
                  showMessage('エラー: ピンの削除に失敗しました。', true);
-                 if(document.getElementById(`pin-${pinId}`)) { // 要素がまだあれば表示状態に戻す
+                 if(document.getElementById(`pin-${pinId}`)) {
                      pinElement.classList.remove('hide'); pinElement.classList.add('show');
                  }
              }
-             return;
+             return; // 処理中断
           }
+          // ↑↑↑ チェックここまで ↑↑↑
           if (response?.success) {
-            // console.log("CS: Remove request successful for pin", pinId);
-            // 削除成功時は BG からの pinRemoved を待つのでここでは何もしないか、
-            // アニメーション完了後に消すだけにする
              setTimeout(() => removePinElement(pinId, false), 300);
           } else {
             console.error("CS: Failed to remove pin:", response?.error);
@@ -415,11 +397,10 @@ function renderPin(pinId, pin) {
   }
 
   pinsArea.appendChild(pinElement);
-  requestAnimationFrame(() => { // 表示アニメーション
+  requestAnimationFrame(() => {
     pinElement.classList.add('show');
   });
 
-  // ピン要素を管理
   userPins[pinId] = { element: pinElement };
 }
 
@@ -431,19 +412,18 @@ function removePinElement(pinId, animate = true) {
     if (pinElement) {
         const performRemove = () => {
             if (pinElement.parentNode) pinElement.remove();
-            // console.log(`CS: Pin element ${pinId} removed.`);
-            delete userPins[pinId]; // 管理情報から削除
+            delete userPins[pinId];
         };
 
         if (animate && pinElement.classList.contains('show')) {
             pinElement.classList.remove('show');
             pinElement.classList.add('hide');
-            setTimeout(performRemove, 300); // アニメーション時間後に削除
+            setTimeout(performRemove, 300);
         } else {
-            performRemove(); // 即時削除
+            performRemove();
         }
     } else {
-        delete userPins[pinId]; // 要素がなくても管理情報からは削除
+        delete userPins[pinId];
     }
 }
 
@@ -452,11 +432,11 @@ let messageTimeout;
 function showMessage(text, isError = false) {
   let messageArea = document.getElementById('ping-message');
   if (!messageArea) messageArea = createMessageArea();
-  if (!messageArea) return; // body がなければ表示できない
+  if (!messageArea) return;
 
   if (messageTimeout) clearTimeout(messageTimeout);
   messageArea.textContent = text;
-  messageArea.className = 'ping-message-area'; // クラスでスタイル管理
+  messageArea.className = 'ping-message-area';
   messageArea.classList.add(isError ? 'error' : 'success');
   messageArea.classList.add('show');
 
@@ -470,7 +450,7 @@ function createMessageArea() {
     if (!area && document.body) {
         area = document.createElement('div');
         area.id = 'ping-message';
-        area.className = 'ping-message-area'; // 初期クラス
+        area.className = 'ping-message-area';
         document.body.appendChild(area);
     }
     return area;
@@ -480,7 +460,7 @@ function createMessageArea() {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeContentScript);
 } else {
-    initializeContentScript(); // 既に読み込み済みなら即時実行
+    initializeContentScript();
 }
 
 console.log('Meet Ping Extension content script loaded.');
