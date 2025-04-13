@@ -25,50 +25,40 @@ const PING_MENU_POSITIONS = {
 // --- 初期化関連 ---
 function initializeContentScript() {
   console.log('Content script: 初期化中 for URL:', currentUrl);
-  // Backgroundに認証状態を問い合わせる
   requestAuthStatusFromBackground();
-  // 初回ロード時のMeeting ID検出とUI初期化
-  handleUrlUpdate(currentUrl); // URL更新ハンドラを初回も呼ぶ
+  handleUrlUpdate(currentUrl);
 }
 
 function requestAuthStatusFromBackground() {
   chrome.runtime.sendMessage({ action: 'getAuthStatus' }, (response) => {
-    // ↓↓↓ lastError チェック ↓↓↓
     if (chrome.runtime.lastError) {
       if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
          console.warn("CS: Context invalidated before receiving initial auth status.");
       } else {
          console.error("CS: Error sending getAuthStatus message:", chrome.runtime.lastError.message);
       }
-      handleAuthResponse(null); // エラー時は null で処理
-      return; // 処理中断
+      handleAuthResponse(null);
+      return;
     }
-    // ↑↑↑ チェックここまで ↑↑↑
     handleAuthResponse(response);
   });
 }
 
-// 認証状態の応答を処理
 function handleAuthResponse(response) {
     const user = response?.user;
     console.log('CS: Handling auth response. User:', user ? user.email : 'null');
     const previousUser = currentUser;
     currentUser = user;
-
-    // ユーザー状態が変わったか、UIが存在しない場合にUI等を更新
     const uiExists = !!document.getElementById('ping-container');
     if (JSON.stringify(previousUser) !== JSON.stringify(currentUser) || !uiExists) {
-        handleUrlUpdate(currentUrl); // URLに基づいてUIを再評価・更新
+        handleUrlUpdate(currentUrl);
     }
 }
 
-// Background Scriptからのメッセージ受信
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (chrome.runtime.lastError) {
-      // console.warn("CS: onMessage listener invoked after context invalidated:", chrome.runtime.lastError.message);
-      return; // コンテキスト無効時は何もしない
+      return;
   }
-  // console.log("CS: Received message:", message.action);
 
   switch (message.action) {
     case 'authStatusChanged':
@@ -76,15 +66,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ received: true });
       break;
     case 'pinAdded':
-      if (message.data?.pinId && message.data?.pin) {
-        renderPin(message.data.pinId, message.data.pin);
-      } else { console.warn("CS: Invalid pinAdded data:", message.data); }
+      if (message.pinId && message.pin) {
+        renderPin(message.pinId, message.pin); // pinAdded時にrenderPinを呼ぶ
+      } else { console.warn("CS: Invalid pinAdded data:", message); }
       sendResponse({ received: true });
       break;
     case 'pinRemoved':
-      if (message.data?.pinId) {
-        removePinElement(message.data.pinId);
-      } else { console.warn("CS: Invalid pinRemoved data:", message.data); }
+      if (message.pinId) {
+        removePinElement(message.pinId);
+      } else { console.warn("CS: Invalid pinRemoved data:", message); }
       sendResponse({ received: true });
       break;
     case 'permissionError':
@@ -104,10 +94,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ received: false, message: "Unknown action" });
       break;
   }
-   return true; // 非同期応答の可能性のため true を返す
+   return true;
 });
 
-// URL更新時の処理
 function handleUrlUpdate(url) {
     console.log('CS: Handling URL update:', url);
     const meetRegex = /meet\.google\.com\/([a-z0-9\-]+)/i;
@@ -136,7 +125,6 @@ function handleUrlUpdate(url) {
     }
 }
 
-// --- ピンシステム初期化・開始 ---
 function startPingSystem() {
   if (!currentUser) { console.error('CS: startPingSystem: User not authenticated.'); return; }
   if (!currentMeetingId) { console.error('CS: startPingSystem: Meeting ID not found.'); return; }
@@ -144,11 +132,9 @@ function startPingSystem() {
   if (!document.getElementById('ping-container')) {
      setupUI();
   }
-
   showMessage(`ピンシステム起動 (${currentUser.displayName || currentUser.email.split('@')[0]})`);
 }
 
-// --- UI関連 ---
 function setupUI() {
   if (document.getElementById('ping-container')) { return; }
   console.log("CS: setupUI: Creating UI elements...");
@@ -208,23 +194,23 @@ function setupUI() {
       pingMenu.classList.add('hidden');
 
       chrome.runtime.sendMessage({
-          action: 'createPing',
+          action: 'createPin',
           meetingId: currentMeetingId,
           pinData: { type: key }
       }, (response) => {
-          // ↓↓↓ lastError チェック ↓↓↓
           if (chrome.runtime.lastError) {
               if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
-                  console.warn("CS: Context invalidated before receiving response for createPing.");
+                  console.warn("CS: Context invalidated before receiving response for createPin.");
               } else {
-                  console.error("CS: Error sending createPing message:", chrome.runtime.lastError.message);
+                  console.error("CS: Error sending createPin message:", chrome.runtime.lastError.message);
                   showMessage("エラー: ピンの作成依頼に失敗しました。", true);
               }
-              return; // 処理中断
+              return;
           }
-          // ↑↑↑ チェックここまで ↑↑↑
           if (response?.success) {
               showMessage(`ピン「${pingInfo.label}」を作成しました`);
+              // 自分のピン作成成功時にも音を鳴らす場合はここに playSound() を追加
+              // playSound();
           } else {
               console.error("CS: Failed to create pin:", response?.error, "Code:", response?.code);
               showMessage(`エラー: ピンを作成できませんでした (${response?.error || '不明なエラー'})`, true);
@@ -296,7 +282,6 @@ function showLoginPrompt() {
           loginButton.disabled = true;
           loginButton.textContent = '処理中...';
           chrome.runtime.sendMessage({ action: 'requestLogin' }, (response) => {
-              // ↓↓↓ lastError チェック ↓↓↓
               if (chrome.runtime.lastError) {
                   if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
                        console.warn("CS: Context invalidated before receiving response for requestLogin.");
@@ -308,9 +293,8 @@ function showLoginPrompt() {
                      loginButton.disabled = false;
                      loginButton.textContent = 'ログイン';
                   }
-                  return; // 処理中断
+                  return;
               }
-              // ↑↑↑ チェックここまで ↑↑↑
               if (response?.started) {
                   showMessage('ログインプロセスを開始しました...');
                   if(document.getElementById('ping-login-prompt')) prompt.remove();
@@ -367,22 +351,20 @@ function renderPin(pinId, pin) {
       pinElement.classList.remove('show');
       pinElement.classList.add('hide');
 
-      chrome.runtime.sendMessage({ action: 'removePing', meetingId: currentMeetingId, pinId: pinId }, (response) => {
-          // ↓↓↓ lastError チェック ↓↓↓
+      chrome.runtime.sendMessage({ action: 'removePin', meetingId: currentMeetingId, pinId: pinId }, (response) => {
           if (chrome.runtime.lastError) {
              if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
-                 console.warn("CS: Context invalidated before receiving response for removePing.");
+                 console.warn("CS: Context invalidated before receiving response for removePin.");
                  removePinElement(pinId, false);
              } else {
-                 console.error("CS: removePing message error:", chrome.runtime.lastError.message);
+                 console.error("CS: removePin message error:", chrome.runtime.lastError.message);
                  showMessage('エラー: ピンの削除に失敗しました。', true);
                  if(document.getElementById(`pin-${pinId}`)) {
                      pinElement.classList.remove('hide'); pinElement.classList.add('show');
                  }
              }
-             return; // 処理中断
+             return;
           }
-          // ↑↑↑ チェックここまで ↑↑↑
           if (response?.success) {
              setTimeout(() => removePinElement(pinId, false), 300);
           } else {
@@ -396,6 +378,12 @@ function renderPin(pinId, pin) {
     });
   }
 
+  // --- ★★★ 音声再生処理を追加 ★★★ ---
+  if (currentUser && pin.createdBy?.uid !== currentUser.uid) { // 自分のピンでない場合のみ再生
+    playSound();
+  }
+  // --- ★★★ ここまで ★★★ ---
+
   pinsArea.appendChild(pinElement);
   requestAnimationFrame(() => {
     pinElement.classList.add('show');
@@ -403,6 +391,22 @@ function renderPin(pinId, pin) {
 
   userPins[pinId] = { element: pinElement };
 }
+
+// --- ★★★ 音声再生関数を追加 ★★★ ---
+function playSound() {
+    try {
+        const audio = new Audio(chrome.runtime.getURL('sounds/pin_created.mp3'));
+        // audio.volume = 0.5; // 必要なら音量調整
+        audio.play().catch(error => {
+            // ブラウザによってはユーザーの操作なしに音声を再生できない場合がある
+            console.warn("CS: Audio play failed. User interaction might be required.", error);
+        });
+    } catch (e) {
+        console.error("CS: Failed to create or play audio:", e);
+    }
+}
+// --- ★★★ ここまで ★★★ ---
+
 
 // ピン要素削除ヘルパー
 function removePinElement(pinId, animate = true) {
