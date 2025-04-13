@@ -1,20 +1,20 @@
-// background.js - Firebase SDK v9モジュラー形式に変換
+// src/background.js (修正後 - 永続性設定削除)
 
 // Firebase SDKをインポート
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  onAuthStateChanged, 
-  signInWithCredential, 
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithCredential,
   GoogleAuthProvider,
   signOut,
-  setPersistence,
-  browserSessionPersistence
+  // setPersistence, // 不要になった
+  // browserSessionPersistence // 不要になった
 } from 'firebase/auth';
-import { 
-  getDatabase, 
-  ref, 
-  onChildAdded, 
+import {
+  getDatabase,
+  ref,
+  onChildAdded,
   onChildRemoved,
   off,
   push,
@@ -27,9 +27,9 @@ import { firebaseConfig, COMPANY_DOMAIN } from './firebase-config';
 
 let firebaseInitialized = false;
 let auth = null;
-let database = null; // Database インスタンスを保持
+let database = null;
 let currentUser = null;
-let activeListeners = {}; // { meetingId: { ref: ..., listeners: { added: ..., removed: ... } } }
+let activeListeners = {};
 
 // Firebase 初期化関数 (async)
 async function initializeFirebase() {
@@ -43,27 +43,26 @@ async function initializeFirebase() {
     // Firebase アプリの初期化
     const app = initializeApp(firebaseConfig);
     console.log('BG: Firebase Appが初期化されました');
-    
+
     auth = getAuth(app);
     database = getDatabase(app);
     console.log('BG: Firebase Auth/Databaseインスタンスを取得しました');
 
-    // 永続性を SESSION に設定（v9ではNONEがなくなり、browserSessionPersistenceが最も近い）
-    try {
-      console.log('BG: 永続性設定 (SESSION) を試みます...');
-      await setPersistence(auth, browserSessionPersistence);
-      console.log('BG: 永続性を SESSION に設定しました');
-      firebaseInitialized = true;
-      setupAuthListener(); // 認証リスナー設定
-      console.log('BG: Firebase初期化完了 (永続性: SESSION)');
-      return { success: true };
-    } catch (error) {
-      console.warn('BG: 永続性設定 (SESSION) エラー (無視して続行):', error);
-      firebaseInitialized = true; // エラーでも初期化は完了扱いにする
-      setupAuthListener();
-      console.log('BG: Firebase初期化完了 (永続性設定エラーあり)');
-      return { success: true, warning: 'Persistence setting failed but ignored' };
-    }
+    // ★★★ 永続性設定の呼び出しを削除 ★★★
+    // try {
+    //   console.log('BG: 永続性設定 (SESSION) を試みます...');
+    //   await setPersistence(auth, browserSessionPersistence);
+    //   console.log('BG: 永続性を SESSION に設定しました');
+    // } catch (error) {
+    //   console.warn('BG: 永続性設定 (SESSION) エラー (無視して続行):', error);
+    // }
+    // ★★★ ここまで削除 ★★★
+
+    firebaseInitialized = true; // 初期化フラグを設定
+    setupAuthListener(); // 認証リスナー設定
+    console.log('BG: Firebase初期化完了 (永続性: メモリ内)'); // メッセージ変更
+    return { success: true };
+
   } catch (error) {
     console.error('BG: Firebase初期化中の致命的エラー:', error);
     firebaseInitialized = false;
@@ -71,27 +70,27 @@ async function initializeFirebase() {
   }
 }
 
-// 認証状態リスナー設定
+// --- 認証状態リスナー設定 (変更なし) ---
 function setupAuthListener() {
   if (!auth) { console.error("BG: Auth listener setup failed - Auth not initialized"); return; }
-  
+
   onAuthStateChanged(auth, (user) => {
     console.log("BG: onAuthStateChanged triggered. user:", user ? user.email : 'null');
     const previousUser = currentUser;
     let isAllowedDomain = false;
 
     if (user && user.email) {
-        if (COMPANY_DOMAIN) { // COMPANY_DOMAIN が定義され、空でないか
+        if (COMPANY_DOMAIN) {
             console.log(`BG: Checking email "${user.email}" against domain "@${COMPANY_DOMAIN}"`);
             isAllowedDomain = user.email.endsWith(`@${COMPANY_DOMAIN}`);
             console.log(`BG: Domain check result: ${isAllowedDomain}`);
         } else {
             console.warn("BG: COMPANY_DOMAIN is not defined or empty. Domain check skipped, allowing user.");
-            isAllowedDomain = true; // ドメイン未指定なら許可
+            isAllowedDomain = true;
         }
     } else {
         console.log("BG: User logged out or email is missing.");
-        isAllowedDomain = false; // ユーザーがいない場合は不許可
+        isAllowedDomain = false;
     }
 
     if (isAllowedDomain) {
@@ -99,15 +98,14 @@ function setupAuthListener() {
       console.log("BG: User authenticated:", currentUser.email);
       startListenersForActiveMeetTabs();
     } else {
-      if (user) { // ログインはしたがドメイン不一致
+      if (user) {
         console.warn("BG: User logged in but not from allowed domain:", user.email);
         signOut(auth).catch(err => console.error("BG: Sign out error due to domain mismatch:", err));
       }
       currentUser = null;
-      stopAllListeners(); // ドメイン不一致またはログアウトならリスナー停止
+      stopAllListeners();
     }
 
-    // ユーザー状態が変わった場合のみ通知
     if (JSON.stringify(previousUser) !== JSON.stringify(currentUser)) {
         console.log("BG: Auth status changed, notifying contexts.");
         notifyAuthStatusToAllContexts();
@@ -120,13 +118,11 @@ function setupAuthListener() {
   });
 }
 
-// 全コンテキストへの認証状態通知
+// --- notifyAuthStatusToAllContexts, notifyAuthStatusToContentScripts, notifyAuthStatusToPopup (変更なし) ---
 function notifyAuthStatusToAllContexts() {
     notifyAuthStatusToContentScripts();
     notifyAuthStatusToPopup();
 }
-
-// Content Script への通知
 function notifyAuthStatusToContentScripts() {
   chrome.tabs.query({ url: "https://meet.google.com/*" }, (tabs) => {
     tabs.forEach(tab => {
@@ -139,8 +135,6 @@ function notifyAuthStatusToContentScripts() {
     });
   });
 }
-
-// Popup への通知
 function notifyAuthStatusToPopup() {
     chrome.runtime.sendMessage({ action: 'authStatusChanged', user: currentUser })
       .catch(error => {
@@ -150,45 +144,38 @@ function notifyAuthStatusToPopup() {
       });
 }
 
-// --- データベースリスナー関連 ---
+
+// --- データベースリスナー関連 (変更なし) ---
 function startDbListener(meetingId) {
     if (!currentUser || !database || !meetingId) {
         console.log(`BG: ${meetingId} のリスナーを開始できません - User:${!!currentUser}, DB:${!!database}`);
         return;
     }
     if (activeListeners[meetingId]) {
-        // console.log(`BG: ${meetingId} のリスナーは既に有効です`);
         return;
     }
-
     console.log(`BG: ${meetingId} のDBリスナーを開始します`);
     const pinsRef = ref(database, `meetings/${meetingId}/pins`);
-    const listenerCallbacks = {}; // リスナー関数の参照を保持
-
+    const listenerCallbacks = {};
     listenerCallbacks.added = onChildAdded(pinsRef, (snapshot) => {
         const pinId = snapshot.key;
         const pin = snapshot.val();
-        // console.log(`BG: child_added for ${meetingId}:`, pinId);
         notifyPinUpdateToContentScripts(meetingId, 'pinAdded', { pinId, pin });
     }, (error) => {
         console.error(`BG: DBリスナーエラー (child_added) for ${meetingId}:`, error);
         if (error.code === 'PERMISSION_DENIED') notifyPermissionErrorToContentScripts(meetingId);
-        stopDbListener(meetingId); // エラー時は停止
+        stopDbListener(meetingId);
     });
-
     listenerCallbacks.removed = onChildRemoved(pinsRef, (snapshot) => {
         const pinId = snapshot.key;
-        // console.log(`BG: child_removed for ${meetingId}:`, pinId);
         notifyPinUpdateToContentScripts(meetingId, 'pinRemoved', { pinId });
     }, (error) => {
         console.error(`BG: DBリスナーエラー (child_removed) for ${meetingId}:`, error);
         if (error.code === 'PERMISSION_DENIED') notifyPermissionErrorToContentScripts(meetingId);
-        stopDbListener(meetingId); // エラー時は停止
+        stopDbListener(meetingId);
     });
-
     activeListeners[meetingId] = { ref: pinsRef, listeners: listenerCallbacks };
 }
-
 function stopDbListener(meetingId) {
     const listenerInfo = activeListeners[meetingId];
     if (listenerInfo) {
@@ -202,12 +189,10 @@ function stopDbListener(meetingId) {
         delete activeListeners[meetingId];
     }
 }
-
 function stopAllListeners() {
     console.log("BG: 全てのDBリスナーを停止します");
     Object.keys(activeListeners).forEach(stopDbListener);
 }
-
 function startListenersForActiveMeetTabs() {
     if (!currentUser) return;
     chrome.tabs.query({ url: "https://meet.google.com/*" }, (tabs) => {
@@ -223,7 +208,7 @@ function startListenersForActiveMeetTabs() {
     });
 }
 
-// --- Content Script への通知ヘルパー ---
+// --- Content Script への通知ヘルパー (変更なし) ---
 function notifyPinUpdateToContentScripts(targetMeetingId, action, data) {
     chrome.tabs.query({ url: "https://meet.google.com/*" }, (tabs) => {
         tabs.forEach(tab => {
@@ -238,7 +223,6 @@ function notifyPinUpdateToContentScripts(targetMeetingId, action, data) {
         });
     });
 }
-
 function notifyPermissionErrorToContentScripts(targetMeetingId) {
     chrome.tabs.query({ url: "https://meet.google.com/*" }, (tabs) => {
         tabs.forEach(tab => {
@@ -253,18 +237,17 @@ function notifyPermissionErrorToContentScripts(targetMeetingId) {
         });
     });
 }
-// Googleu30edu30b0u30a4u30f3u51e6u7406 (async)
+
+
+// --- Googleログイン処理 (変更なし) ---
 async function signInWithGoogle() {
-  console.log("BG: Googleu30edu30b0u30a4u30f3u3092u958bu59cbu3057u307eu3059");
+  console.log("BG: Googleログインを開始します");
   try {
-    // Firebaseu521du671fu5316u78bau8a8d
     const initResult = await initializeFirebase();
     if (!initResult.success) {
-      console.error("BG: Firebaseu521du671fu5316u30a8u30e9u30fc:", initResult.error);
+      console.error("BG: Firebase初期化エラー:", initResult.error);
       return { success: false, error: initResult.error };
     }
-
-    // Chrome Identity APIu3092u4f7fu7528u3057u3066Googleu30c8u30fcu30afu30f3u3092u53d6u5f97
     const authToken = await new Promise((resolve, reject) => {
       chrome.identity.getAuthToken({ interactive: true }, (token) => {
         if (chrome.runtime.lastError) {
@@ -274,45 +257,35 @@ async function signInWithGoogle() {
         resolve(token);
       });
     });
-
-    // Chrome Identity APIu304bu3089u53d6u5f97u3057u305fu30c8u30fcu30afu30f3u3067Firebaseu306bu30b5u30a4u30f3u30a4u30f3
-    // RecaptchaVerifieru3092u4f7fu7528u305bu305au306bu76f4u63a5u8a8du8a3c
     const credential = GoogleAuthProvider.credential(null, authToken);
     await signInWithCredential(auth, credential);
-    console.log("BG: Googleu30edu30b0u30a4u30f3u6210u529f");
+    console.log("BG: Googleログイン成功");
     return { success: true };
   } catch (error) {
-    console.error("BG: Googleu30edu30b0u30a4u30f3u30a8u30e9u30fc:", error);
+    console.error("BG: Googleログインエラー:", error); // エラーログ改善
     return { success: false, error: error };
   }
 }
 
-// URLu304bu3089u30dfu30fcu30c6u30a3u30f3u30b0IDu3092u62bdu51fau3059u308bu30d8u30ebu30d1u30fcu95a2u6570
+// --- URLからMeeting IDを抽出 (変更なし) ---
 function extractMeetingIdFromUrl(url) {
-  // meet.google.com/abc-defg-hij u5f62u5f0fu306eURLu304bu3089IDu3092u62bdu51fa
   const meetRegex = /meet\.google\.com\/([a-z0-9\-]+)/i;
   const match = url.match(meetRegex);
   return match ? match[1] : null;
 }
 
-// u2605u2605u2605 u30bfu30d6u66f4u65b0u30a4u30d9u30f3u30c8u30eau30b9u30cau30fc u2605u2605u2605
+// --- タブ更新リスナー (変更なし) ---
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // URLu304cu5909u66f4u3055u308cu3001u304bu3064u30bfu30d6u306eu8aadu307fu8fbcu307fu304cu5b8cu4e86u3057u305fMeetu30dau30fcu30b8u306bu5bfeu3057u3066u51e6u7406
   if (changeInfo.status === 'complete' && tab.url && tab.url.includes("meet.google.com/")) {
     const meetingId = extractMeetingIdFromUrl(tab.url);
     if (meetingId) {
-      console.log(`BG: Meetu30bfu30d6u304cu66f4u65b0u3055u308cu307eu3057u305f: ${meetingId}`);
-      
-      // u73feu5728u306eu8a8du8a3cu72b6u614bu3092u901au77e5
+      console.log(`BG: Meetタブが更新されました: ${meetingId}`);
       chrome.tabs.sendMessage(tabId, { action: 'authStatusChanged', user: currentUser })
         .catch(error => {
-          // Content Scriptu304cu307eu3060u6e96u5099u3067u304du3066u3044u306au3044u53efu80fdu6027u304cu3042u308bu306eu3067u30a8u30e9u30fcu306fu7121u8996
           if (!error.message?.includes('Receiving end does not exist')) {
-            console.warn(`BG: u30bfu30d6u66f4u65b0u6642u306eu8a8du8a3cu72b6u614bu901au77e5u30a8u30e9u30fc: ${error.message || error}`);
+            console.warn(`BG: タブ更新時の認証状態通知エラー: ${error.message || error}`);
           }
         });
-      
-      // u30edu30b0u30a4u30f3u6e08u307fu306au3089DBu30eau30b9u30cau30fcu3092u958bu59cb
       if (currentUser) {
         startDbListener(meetingId);
       }
@@ -320,68 +293,61 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+// --- メッセージリスナー (変更なし) ---
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  (async () => { // u975eu540cu671fu51e6u7406u306eu305fu3081u306bu30e9u30c3u30d7
+  (async () => {
     try {
-      const initResult = await initializeFirebase(); // u521du671fu5316u5b8cu4e86u3092u5f85u3064
+      const initResult = await initializeFirebase();
       if (!initResult.success || !firebaseInitialized) {
-        sendResponse({ success: false, error: `Firebaseu521du671fu5316u30a8u30e9u30fc: ${initResult.error?.message || 'u4e0du660e'}` });
+        sendResponse({ success: false, error: `Firebase初期化エラー: ${initResult.error?.message || '不明'}` });
         return;
       }
 
-      // --- u8a8du8a3cu95a2u9023u306eu30e1u30c3u30bbu30fcu30b8u51e6u7406 ---
       if (message.action === 'getAuthStatus') {
-        console.log("BG: u8a8du8a3cu72b6u614bu30eau30afu30a8u30b9u30c8u3092u53d7u4fe1", sender.tab ? `from tab ${sender.tab.id}` : 'from popup');
+        console.log("BG: 認証状態リクエストを受信", sender.tab ? `from tab ${sender.tab.id}` : 'from popup');
         sendResponse({ user: currentUser });
         return;
       }
 
       if (message.action === 'requestLogin') {
-        console.log("BG: u30edu30b0u30a4u30f3u30eau30afu30a8u30b9u30c8u3092u53d7u4fe1");
-        // u30edu30b0u30a4u30f3u51e6u7406u3092u958bu59cbu3057u305fu3053u3068u3092u901au77e5
+        console.log("BG: ログインリクエストを受信");
         sendResponse({ started: true });
-        
-        // u5b9fu969bu306eu30edu30b0u30a4u30f3u51e6u7406u3092u5b9fu884c
         const loginResult = await signInWithGoogle();
         if (!loginResult.success) {
-          // u30a8u30e9u30fcu304cu767au751fu3057u305fu5834u5408u3001u30ddu30c3u30d7u30a2u30c3u30d7u306bu901au77e5
-          chrome.runtime.sendMessage({ 
-            action: 'loginFailed', 
-            error: loginResult.error?.message || 'u4e0du660eu306au30a8u30e9u30fc' 
-          }).catch(() => {}); // u30ddu30c3u30d7u30a2u30c3u30d7u304cu9589u3058u3089u308cu3066u3044u308bu53efu80fdu6027u304cu3042u308bu306eu3067u30a8u30e9u30fcu306fu7121u8996
+          chrome.runtime.sendMessage({
+            action: 'loginFailed',
+            error: loginResult.error?.message || '不明なエラー'
+          }).catch(() => {});
         }
         return;
       }
 
       if (message.action === 'requestLogout') {
-        console.log("BG: u30edu30b0u30a2u30a6u30c8u30eau30afu30a8u30b9u30c8u3092u53d7u4fe1");
+        console.log("BG: ログアウトリクエストを受信");
         try {
           await signOut(auth);
-          console.log("BG: u30edu30b0u30a2u30a6u30c8u6210u529f");
+          console.log("BG: ログアウト成功");
           sendResponse({ success: true });
         } catch (error) {
-          console.error("BG: u30edu30b0u30a2u30a6u30c8u30a8u30e9u30fc:", error);
-          sendResponse({ success: false, error: error.message || 'u30edu30b0u30a2u30a6u30c8u4e2du306bu30a8u30e9u30fcu304cu767au751fu3057u307eu3057u305f' });
+          console.error("BG: ログアウトエラー:", error);
+          sendResponse({ success: false, error: error.message || 'ログアウト中にエラーが発生しました' });
         }
         return;
       }
 
-      // --- u30d4u30f3u64cdu4f5cu95a2u9023u306eu30e1u30c3u30bbu30fcu30b8u51e6u7406 ---
       if (!currentUser) {
-        console.warn("BG: u30e6u30fcu30b6u30fcu304cu30edu30b0u30a4u30f3u3057u3066u3044u306au3044u305fu3081u3001u64cdu4f5cu3092u5b9fu884cu3067u304du307eu305bu3093", message.action);
-        sendResponse({ success: false, error: 'u30edu30b0u30a4u30f3u304cu5fc5u8981u3067u3059' });
+        console.warn("BG: ユーザーがログインしていないため、操作を実行できません", message.action);
+        sendResponse({ success: false, error: 'ログインが必要です' });
         return;
       }
 
       if (message.action === 'createPin') {
         const { meetingId, pinData } = message;
         if (!meetingId || !pinData) {
-          sendResponse({ success: false, error: 'u5fc5u8981u306au30d1u30e9u30e1u30fcu30bfu304cu4e0du8db3u3057u3066u3044u307eu3059' });
+          sendResponse({ success: false, error: '必要なパラメータが不足しています' });
           return;
         }
-
         try {
-          // u30e6u30fcu30b6u30fcu60c5u5831u3092u8ffdu52a0
           const pinWithUser = {
             ...pinData,
             createdBy: {
@@ -389,19 +355,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               displayName: currentUser.displayName,
               email: currentUser.email
             },
-            createdAt: Date.now()
+            createdAt: Date.now() // Firebase ServerValue.TIMESTAMP の代替
           };
-
-          // u30d4u30f3u3092u4f5cu6210
           const pinsRef = ref(database, `meetings/${meetingId}/pins`);
           const newPinRef = push(pinsRef);
           await set(newPinRef, pinWithUser);
-          
-          console.log(`BG: u30d4u30f3u3092u4f5cu6210u3057u307eu3057u305f: ${meetingId}/${newPinRef.key}`);
+          console.log(`BG: ピンを作成しました: ${meetingId}/${newPinRef.key}`);
           sendResponse({ success: true, pinId: newPinRef.key });
         } catch (error) {
-          console.error("BG: u30d4u30f3u4f5cu6210u30a8u30e9u30fc:", error);
-          sendResponse({ success: false, error: error.message || 'u30d4u30f3u306eu4f5cu6210u4e2du306bu30a8u30e9u30fcu304cu767au751fu3057u307eu3057u305f' });
+          console.error("BG: ピン作成エラー:", error);
+          sendResponse({ success: false, error: error.message || 'ピンの作成中にエラーが発生しました' });
         }
         return;
       }
@@ -409,48 +372,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.action === 'removePin') {
         const { meetingId, pinId } = message;
         if (!meetingId || !pinId) {
-          sendResponse({ success: false, error: 'u5fc5u8981u306au30d1u30e9u30e1u30fcu30bfu304cu4e0du8db3u3057u3066u3044u307eu3059' });
+          sendResponse({ success: false, error: '必要なパラメータが不足しています' });
           return;
         }
-
         try {
           const pinRef = ref(database, `meetings/${meetingId}/pins/${pinId}`);
           await remove(pinRef);
-          console.log(`BG: u30d4u30f3u3092u524au9664u3057u307eu3057u305f: ${meetingId}/${pinId}`);
+          console.log(`BG: ピンを削除しました: ${meetingId}/${pinId}`);
           sendResponse({ success: true });
         } catch (error) {
-          console.error("BG: u30d4u30f3u524au9664u30a8u30e9u30fc:", error);
-          sendResponse({ success: false, error: error.message || 'u30d4u30f3u306eu524au9664u4e2du306bu30a8u30e9u30fcu304cu767au751fu3057u307eu3057u305f' });
+          console.error("BG: ピン削除エラー:", error);
+          sendResponse({ success: false, error: error.message || 'ピンの削除中にエラーが発生しました' });
         }
         return;
       }
 
-      // u4e0du660eu306au30e1u30c3u30bbu30fcu30b8
-      console.warn("BG: u4e0du660eu306au30e1u30c3u30bbu30fcu30b8u3092u53d7u4fe1:", message);
-      sendResponse({ success: false, error: 'u4e0du660eu306au30e1u30c3u30bbu30fcu30b8u30bfu30a4u30d7' });
+      console.warn("BG: 不明なメッセージを受信:", message);
+      sendResponse({ success: false, error: '不明なメッセージタイプ' });
 
     } catch (error) {
-      console.error("BG: u30e1u30c3u30bbu30fcu30b8u51e6u7406u4e2du306eu4e88u671fu3057u306au3044u30a8u30e9u30fc:", error);
-      sendResponse({ success: false, error: `u4e88u671fu3057u306au3044u30a8u30e9u30fc: ${error.message || error}` });
+      console.error("BG: メッセージ処理中の予期しないエラー:", error);
+      sendResponse({ success: false, error: `予期しないエラー: ${error.message || error}` });
     }
-  })(); // u5373u6642u5b9fu884c async u95a2u6570u3092u547cu3073u51fau3059
+  })();
 
-  // u975eu540cu671fu51e6u7406u3092u884cu3046u305fu3081u3001u5e38u306b true u3092u8fd4u3059u5fc5u8981u304cu3042u308b
-  return true;
+  return true; // 非同期処理のため true を返す
 });
 
 
-// --- u62e1u5f35u6a5fu80fdu306eu30a4u30f3u30b9u30c8u30fcu30eb/u30a2u30c3u30d7u30c7u30fcu30c8/u8d77u52d5u6642u306eu51e6u7406 ---
+// --- 拡張機能インストール/起動時の処理 (変更なし) ---
 chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log("BG: u62e1u5f35u6a5fu80fdu304cu30a4u30f3u30b9u30c8u30fcu30eb/u66f4u65b0u3055u308cu307eu3057u305f", details.reason);
-  
-  // Firebaseu521du671fu5316
+  console.log("BG: 拡張機能がインストール/更新されました", details.reason);
   await initializeFirebase();
-  
-  // u5fc5u8981u306bu5fdcu3058u3066u8ffdu52a0u306eu521du671fu5316u51e6u7406u3092u3053u3053u306bu8a18u8ff0
 });
 
-// u62e1u5f35u6a5fu80fdu8d77u52d5u6642u306eu521du671fu5316
 initializeFirebase().then(result => {
-  console.log("BG: u8d77u52d5u6642u306eFirebaseu521du671fu5316u7d50u679c:", result.success ? 'u6210u529f' : 'u5931u6557', result.error || '');
+  console.log("BG: 起動時のFirebase初期化結果:", result.success ? '成功' : '失敗', result.error || '');
 });
