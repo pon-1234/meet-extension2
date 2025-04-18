@@ -302,138 +302,150 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       // Firebase 初期化チェック
-      console.log("BG: Message received:", message.action, "Firebase Initialized:", firebaseInitialized); // ★ログ追加
-      const initResult = await initializeFirebase();
+      const initResult = await initializeFirebase(); // initializeFirebaseは先に実行
+      console.log("BG: Message received:", message.action, "Firebase Initialized:", firebaseInitialized);
+
       if (!initResult.success || !firebaseInitialized) {
-        console.error("BG: Firebase not initialized, aborting message processing."); // ★ログ追加
-        sendResponse({ success: false, error: `Firebase初期化エラー: ${initResult.error?.message || '不明'}` });
-        return; // ★ return
+        console.error("BG: Firebase not initialized, cannot process message:", message.action);
+        sendResponse({ success: false, error: "バックグラウンド処理の準備ができていません" });
+        return; // 初期化失敗時は処理中断
       }
 
-      // ★★★ アクションを変数に入れ、型と内容をログ出力 ★★★
-      const action = message.action;
-      console.log(`BG: Checking action: "${action}" (Type: ${typeof action})`);
+      const action = message.action; // アクションを変数に格納
 
-      if (action === 'getAuthStatus') {
+      // アクションごとの処理
+      if (typeof action === 'string' && action.trim() === 'getAuthStatus') {
         console.log("BG: Processing getAuthStatus...");
-        console.log("BG: Current user for getAuthStatus:", currentUser ? currentUser.email : 'null');
         sendResponse({ user: currentUser });
-        console.log("BG: Sent response for getAuthStatus");
-        return; // ★ return
-      }
-
-      if (action === 'requestLogin') {
-        console.log("BG: Processing requestLogin...");
-        sendResponse({ started: true }); // 先に応答を返す
-        const loginResult = await signInWithGoogle();
-         if (!loginResult.success) {
-           console.error("BG: Login failed, notifying popup if possible.");
-           chrome.runtime.sendMessage({
-             action: 'loginFailed',
-             error: loginResult.error?.message || '不明なエラー'
-           }).catch(() => {});
-         } else {
-           console.log("BG: Login process finished (auth state change will notify UI).");
-         }
-        return; // ★ return
-      }
-
-      if (action === 'requestLogout') {
-        console.log("BG: Processing requestLogout...");
-        try {
+        return; // 応答後に関数終了
+      } else if (typeof action === 'string' && action.trim() === 'signIn') {
+        console.log("BG: Processing signIn...");
+        const result = await signInWithGoogle();
+        sendResponse(result);
+        return; // 応答後に関数終了
+      } else if (typeof action === 'string' && action.trim() === 'signOut') {
+        console.log("BG: Processing signOut...");
+        if (auth) {
           await signOut(auth);
-          console.log("BG: Logout successful.");
+          console.log("BG: User signed out successfully.");
+          currentUser = null; // currentUserもクリア
+          stopAllListeners(); // リスナー停止
+          notifyAuthStatusToAllContexts(); // 状態変更を通知
           sendResponse({ success: true });
-        } catch (error) {
-          console.error("BG: Logout error:", error);
-          sendResponse({ success: false, error: error.message || 'ログアウト中にエラーが発生しました' });
+        } else {
+          console.warn("BG: SignOut requested but Auth is not initialized.");
+          sendResponse({ success: false, error: "認証システムが初期化されていません" });
         }
-        return; // ★ return
-      }
-
-      // これ以降のアクションはログインが必要
-      if (!currentUser) {
-        console.warn("BG: Action requires login, but user is null:", action);
-        sendResponse({ success: false, error: 'ログインが必要です' });
-        return; // ★ return
-      }
-
-      // ★★★ 比較前に trim() を試す ★★★
-      if (typeof action === 'string' && action.trim() === 'createPin') {
-        console.log("BG: Processing createPin..."); // ★ ここが出力されるはず
+        return; // 応答後に関数終了
+      } else if (typeof action === 'string' && action.trim() === 'startListening') {
+          const { meetingId } = message;
+          console.log(`BG: Processing startListening for ${meetingId}...`);
+          if (meetingId) {
+              startDbListener(meetingId);
+              sendResponse({ success: true, message: `Listener started for ${meetingId}` });
+          } else {
+              sendResponse({ success: false, error: "Meeting ID is required" });
+          }
+          return;
+      } else if (typeof action === 'string' && action.trim() === 'stopListening') {
+          const { meetingId } = message;
+          console.log(`BG: Processing stopListening for ${meetingId}...`);
+          if (meetingId) {
+              stopDbListener(meetingId);
+              sendResponse({ success: true, message: `Listener stopped for ${meetingId}` });
+          } else {
+              sendResponse({ success: false, error: "Meeting ID is required" });
+          }
+          return;
+      } else if (typeof action === 'string' && action.trim() === 'createPin') {
         const { meetingId, pinData } = message;
-        console.log(`BG: createPin - Meeting ID: ${meetingId}, Data:`, pinData);
-        console.log("BG: createPin - Current user:", currentUser ? currentUser.email : 'null');
+        // ★デバッグログ追加: どのタイプのピン作成リクエストか
+        console.log(`BG: Processing createPin for type: ${pinData?.type} in meeting: ${meetingId}`);
 
         if (!meetingId || !pinData || !pinData.type) {
           console.error("BG: createPin - Missing parameters.");
-          sendResponse({ success: false, error: '必要なパラメータが不足しています' });
-          return; // ★ return
+          sendResponse({ success: false, error: "必須パラメータ(meetingId, pinData.type)が不足しています" });
+          return;
         }
+        if (!currentUser) {
+          console.warn("BG: createPin - User not authenticated.");
+          sendResponse({ success: false, error: "認証されていません" });
+          return;
+        }
+        if (!database) {
+          console.error("BG: createPin - Database not initialized.");
+          sendResponse({ success: false, error: "データベースが初期化されていません" });
+          return;
+        }
+
+        console.log(`BG: Attempting to create pin in ${meetingId} for user ${currentUser.uid}`);
+
+        const pinsRef = ref(database, `meetings/${meetingId}/pins`);
+        const newPinRef = push(pinsRef);
+
+        const pinPayload = {
+          ...pinData,
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email.split('@')[0],
+          timestamp: Date.now()
+        };
+
+        console.log("BG: Setting pin payload:", pinPayload);
 
         try {
-          const pinWithUser = {
-            type: pinData.type,
-            createdBy: {
-              uid: currentUser.uid,
-              displayName: currentUser.displayName,
-              email: currentUser.email
-            },
-            createdAt: Date.now()
-          };
-          console.log("BG: createPin - Attempting to set data:", JSON.stringify(pinWithUser));
-
-          const pinsRef = ref(database, `meetings/${meetingId}/pins`);
-          const newPinRef = push(pinsRef);
-          console.log(`BG: createPin - Calling set() for pin ID: ${newPinRef.key}`);
-
-          await set(newPinRef, pinWithUser); // Firebase書き込み
-
-          console.log(`BG: createPin - Set successful for pin ID: ${newPinRef.key}`);
+          await set(newPinRef, pinPayload);
+          console.log(`BG: Pin created successfully in ${meetingId}: ${newPinRef.key}`);
           sendResponse({ success: true, pinId: newPinRef.key });
-
         } catch (error) {
-          console.error("BG: createPin - Error during Firebase set:", error);
-          sendResponse({
-              success: false,
-              error: error.message || 'ピンの作成中にエラーが発生しました',
-              code: error.code
-          });
+          console.error(`BG: ピン作成エラー (${meetingId}):`, error);
+          if (error.code === 'PERMISSION_DENIED') {
+               sendResponse({ success: false, error: "データベースへの書き込み権限がありません。" });
+          } else {
+               sendResponse({ success: false, error: `DB書き込みエラー: ${error.message}` });
+          }
         }
-        return; // ★ return
-      }
-
-      // ★★★ removePin も action 変数と比較 ★★★
-      if (typeof action === 'string' && action.trim() === 'removePin') {
+        // 非同期処理完了後なので return は不要
+      } else if (typeof action === 'string' && action.trim() === 'removePin') {
         console.log("BG: Processing removePin...");
         const { meetingId, pinId } = message;
          if (!meetingId || !pinId) {
            console.error("BG: removePin - Missing parameters.");
-           sendResponse({ success: false, error: '必要なパラメータが不足しています' });
-           return; // ★ return
+           sendResponse({ success: false, error: "必須パラメータ(meetingId, pinId)が不足しています" });
+           return;
          }
-        try {
-          const pinRef = ref(database, `meetings/${meetingId}/pins/${pinId}`);
-          console.log(`BG: removePin - Calling remove for ${meetingId}/${pinId}`);
-          await remove(pinRef);
-          console.log(`BG: removePin - Remove successful for ${meetingId}/${pinId}`);
-          sendResponse({ success: true });
-        } catch (error) {
-          console.error("BG: removePin - Error during Firebase remove:", error);
-          sendResponse({
-              success: false,
-              error: error.message || 'ピンの削除中にエラーが発生しました',
-              code: error.code
-          });
-        }
-        return; // ★ return
+         if (!currentUser) {
+           console.warn("BG: removePin - User not authenticated.");
+           sendResponse({ success: false, error: "認証されていません" });
+           return;
+         }
+         if (!database) {
+           console.error("BG: removePin - Database not initialized.");
+           sendResponse({ success: false, error: "データベースが初期化されていません" });
+           return;
+         }
+
+         console.log(`BG: Attempting to remove pin ${pinId} from ${meetingId} by user ${currentUser.uid}`);
+
+         const pinRef = ref(database, `meetings/${meetingId}/pins/${pinId}`);
+
+         try {
+           // TODO: 本当は削除権限チェック（ピン作成者か確認）を入れるべき
+           await remove(pinRef);
+           console.log(`BG: Pin removed successfully: ${pinId} from ${meetingId}`);
+           sendResponse({ success: true });
+         } catch (error) {
+           console.error(`BG: ピン削除エラー (${meetingId}/${pinId}):`, error);
+           if (error.code === 'PERMISSION_DENIED') {
+               sendResponse({ success: false, error: "データベースからの削除権限がありません。" });
+           } else {
+               sendResponse({ success: false, error: `DB削除エラー: ${error.message}` });
+           }
+         }
+         // 非同期処理完了後なので return は不要
+      } else {
+        console.warn("BG: Received unknown or invalid action:", message.action);
+        sendResponse({ success: false, error: `不明なアクション: ${message.action}` });
       }
-
-      // どのifにも一致しなかった場合
-      console.warn("BG: Unknown message action received:", action);
-      sendResponse({ success: false, error: '不明なメッセージタイプ' });
-      // ここは最後の処理なので return 不要
-
     } catch (error) {
       console.error("BG: Unexpected error in message listener:", error);
       sendResponse({ success: false, error: `予期しないエラー: ${error.message || error}` });
@@ -443,7 +455,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true; // 非同期処理のため true を返す
 });
-
 
 // --- 拡張機能インストール/起動時の処理 ---
 chrome.runtime.onInstalled.addListener(async (details) => {

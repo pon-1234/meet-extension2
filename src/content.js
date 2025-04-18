@@ -193,6 +193,9 @@ function setupUI() {
       event.stopPropagation();
       pingMenu.classList.add('hidden');
 
+      // ★デバッグログ追加: どのピンがクリックされたか
+      console.log(`CS: Ping option clicked - Type: ${key}, Meeting ID: ${currentMeetingId}`);
+
       chrome.runtime.sendMessage({
           action: 'createPin',
           meetingId: currentMeetingId,
@@ -395,18 +398,19 @@ function renderPin(pinId, pin) {
 // --- ★★★ 音声再生関数を追加 ★★★ ---
 function playSound() {
     try {
-        const audio = new Audio(chrome.runtime.getURL('sounds/pin_created.mp3'));
-        // audio.volume = 0.5; // 必要なら音量調整
-        audio.play().catch(error => {
-            // ブラウザによってはユーザーの操作なしに音声を再生できない場合がある
-            console.warn("CS: Audio play failed. User interaction might be required.", error);
-        });
-    } catch (e) {
-        console.error("CS: Failed to create or play audio:", e);
+        // 再生する音声ファイルのURLを取得
+        const soundUrl = chrome.runtime.getURL('sounds/pin_created.mp3');
+        // Audioオブジェクトを作成
+        const audio = new Audio(soundUrl);
+        // ★★★ 音量を調整（例: 0.3 = 30%） ★★★
+        audio.volume = 0.3;
+        // 音声を再生
+        audio.play().catch(e => console.error('CS: 音声再生エラー:', e));
+    } catch (error) {
+        console.error('CS: playSound関数でエラー:', error);
     }
 }
 // --- ★★★ ここまで ★★★ ---
-
 
 // ピン要素削除ヘルパー
 function removePinElement(pinId, animate = true) {
