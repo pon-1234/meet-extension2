@@ -6,17 +6,28 @@ let currentMeetingId = null; // 現在のページの会議ID
 let userPins = {}; // { pinId: { element: ... } }
 let currentUrl = location.href; // 現在のURLを保持
 
+// ピンの種類定義 (8種類に更新)
 const PING_DEFINITIONS = {
-    danger: { icon: chrome.runtime.getURL('icons/danger.png'), label: '撤退' },
-    onMyWay: { icon: chrome.runtime.getURL('icons/onMyWay.png'), label: '話します' },
-    question: { icon: chrome.runtime.getURL('icons/question.png'), label: '疑問' },
-    assist: { icon: chrome.runtime.getURL('icons/assist.png'), label: '助けて' }
+    question: { icon: chrome.runtime.getURL('icons/question.png'), label: '疑問' }, // 疑問
+    onMyWay: { icon: chrome.runtime.getURL('icons/onMyWay.png'), label: '任せて' }, // 話します → 任せて
+    danger: { icon: chrome.runtime.getURL('icons/danger.png'), label: '撤退' }, // 撤退
+    assist: { icon: chrome.runtime.getURL('icons/assist.png'), label: '助けて' }, // 助けて
+    goodJob: { icon: chrome.runtime.getURL('icons/goodJob.png'), label: 'いい感じ' }, // NEW: いい感じ
+    finishHim: { icon: chrome.runtime.getURL('icons/finishHim.png'), label: 'トドメだ' }, // NEW: トドメだ
+    needInfo: { icon: chrome.runtime.getURL('icons/needInfo.png'), label: '情報が必要' }, // NEW: 情報が必要
+    changePlan: { icon: chrome.runtime.getURL('icons/changePlan.png'), label: '作戦変更' }, // NEW: 作戦変更
 };
+
+// メニューの配置計算用 (8種類用に角度を調整)
 const PING_MENU_POSITIONS = {
-    danger: { angle: -90, distance: 70 },
-    onMyWay: { angle: 0, distance: 70 },
-    question: { angle: 90, distance: 70 },
-    assist: { angle: 180, distance: 70 }
+    question:   { angle: 90,  distance: 70 }, // 下
+    onMyWay:    { angle: 45,  distance: 70 }, // 右下
+    danger:     { angle: 0,   distance: 70 }, // 右
+    assist:     { angle: -45, distance: 70 }, // 右上
+    goodJob:    { angle: -90, distance: 70 }, // 上
+    finishHim:  { angle: -135, distance: 70 }, // 左上
+    needInfo:   { angle: 180, distance: 70 }, // 左
+    changePlan: { angle: 135, distance: 70 }, // 左下
 };
 
 // --- 初期化関連 ---
@@ -104,37 +115,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ received: true });
       break;
     case 'pinAdded':
-      // Background側でフィルタリングされているはずだが、念のため現在の会議IDと比較
-      // (message に meetingId を含めてもらうのがより確実)
       if (currentMeetingId && message.pinId && message.pin) {
-          // console.log(`CS: Received pinAdded for current meeting ${currentMeetingId}`);
           renderPin(message.pinId, message.pin);
-      } else {
-          // console.log("CS: Ignoring pinAdded for different meeting or invalid data:", message);
       }
       sendResponse({ received: true });
       break;
     case 'pinRemoved':
-      // Background側でフィルタリングされているはずだが、念のため現在の会議IDと比較
       if (currentMeetingId && message.pinId) {
-           // console.log(`CS: Received pinRemoved for current meeting ${currentMeetingId}`);
            removePinElement(message.pinId);
-      } else {
-           // console.log("CS: Ignoring pinRemoved for different meeting or invalid data:", message);
       }
       sendResponse({ received: true });
       break;
-    case 'dbPermissionError': // dbPermissionError の typo を修正
+    case 'dbPermissionError':
        showMessage("エラー: DBアクセス権限がありません。", true);
        sendResponse({ received: true });
        break;
     case 'urlUpdated':
-        // BackgroundからURL更新通知を受け取る
         if (message.url && message.url !== currentUrl) {
             currentUrl = message.url;
             handleUrlUpdate(currentUrl);
         } else if (message.url === currentUrl && !document.getElementById('ping-container')) {
-            // URLは同じだがUIがない場合 (例: ページリロード後)
             handleUrlUpdate(currentUrl);
         }
        sendResponse({ received: true });
@@ -146,14 +146,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
    return true; // Keep channel open for async response
 });
 
-// --- UI関連 (変更なし) ---
+// --- UI関連 ---
 function startPingSystem() {
-  if (!currentUser) { /*console.error('CS: startPingSystem: User not authenticated.');*/ return; }
-  if (!currentMeetingId) { /*console.error('CS: startPingSystem: Meeting ID not found.');*/ return; }
+  if (!currentUser) { return; }
+  if (!currentMeetingId) { return; }
   if (!document.getElementById('ping-container')) {
      setupUI();
   }
-  // showMessage(`ピンシステム起動 (${currentUser.displayName || currentUser.email.split('@')[0]})`);
 }
 
 function setupUI() {
@@ -173,6 +172,9 @@ function setupUI() {
   const pingMenu = document.createElement('div');
   pingMenu.id = 'ping-menu';
   pingMenu.classList.add('hidden');
+  // メニューのサイズを少し大きくする (オプション)
+  // pingMenu.style.width = '190px';
+  // pingMenu.style.height = '190px';
 
   const pingCenter = document.createElement('div');
   pingCenter.id = 'ping-center';
@@ -194,7 +196,7 @@ function setupUI() {
     const iconDiv = document.createElement('div');
     iconDiv.className = 'ping-icon';
     const iconImg = document.createElement('img');
-    iconImg.src = pingInfo.icon;
+    iconImg.src = pingInfo.icon; // アイコンファイルが存在することを確認
     iconImg.alt = pingInfo.label;
     iconImg.width = 24; iconImg.height = 24;
     iconDiv.appendChild(iconImg);
@@ -202,8 +204,10 @@ function setupUI() {
 
     if (posInfo) {
       const angleRad = posInfo.angle * (Math.PI / 180);
-      const x = Math.cos(angleRad) * posInfo.distance;
-      const y = Math.sin(angleRad) * posInfo.distance;
+      // 少し距離を調整して重なりを避ける (オプション)
+      const distance = posInfo.distance || 70;
+      const x = Math.cos(angleRad) * distance;
+      const y = Math.sin(angleRad) * distance;
       option.style.position = 'absolute';
       option.style.top = '50%';
       option.style.left = '50%';
@@ -213,10 +217,9 @@ function setupUI() {
     option.addEventListener('click', (event) => {
       event.stopPropagation();
       pingMenu.classList.add('hidden');
-      // console.log(`CS: Ping option clicked - Type: ${key}, Meeting ID: ${currentMeetingId}`);
       chrome.runtime.sendMessage({
           action: 'createPin',
-          meetingId: currentMeetingId, // ★★★ 会議IDを渡す ★★★
+          meetingId: currentMeetingId,
           pinData: { type: key }
       })
       .then(response => {
@@ -244,7 +247,6 @@ function setupUI() {
     document.body.appendChild(container);
     document.removeEventListener('click', handleDocumentClickForMenu);
     document.addEventListener('click', handleDocumentClickForMenu);
-    // console.log('CS: Ping UI added to body.');
   } else {
     console.error("CS: setupUI: document.body not found.");
   }
@@ -258,7 +260,7 @@ function cleanupUI() {
   if (loginPrompt) loginPrompt.remove();
   const messageArea = document.getElementById('ping-message');
   if (messageArea) messageArea.remove();
-  userPins = {}; // ピン管理オブジェクトもクリア
+  userPins = {};
 }
 
 function handleDocumentClickForMenu(event) {
@@ -284,7 +286,6 @@ function showLoginPrompt() {
   if (!window.location.href.includes("meet.google.com/")) return;
   if (!document.body) return;
 
-  // console.log("CS: Showing login prompt.");
   const prompt = document.createElement('div');
   prompt.id = 'ping-login-prompt';
   prompt.innerHTML = `ピン機能を使うにはログインが必要です。<button id="ping-login-button">ログイン</button>`;
@@ -296,7 +297,7 @@ function showLoginPrompt() {
           e.stopPropagation();
           loginButton.disabled = true;
           loginButton.textContent = '処理中...';
-          chrome.runtime.sendMessage({ action: 'requestLogin' }) // ★アクション名変更
+          chrome.runtime.sendMessage({ action: 'requestLogin' })
             .then(response => {
                 if (response?.started) {
                     showMessage('ログインプロセスを開始しました...');
@@ -326,14 +327,13 @@ function showLoginPrompt() {
 // --- ピン表示関連 ---
 function renderPin(pinId, pin) {
   const pinsArea = document.getElementById('pins-area');
-  if (!pinsArea) { console.warn("CS: #pins-area not found."); return; }
+  if (!pinsArea) { return; }
   removePinElement(pinId, false); // 既存のピンがあればアニメーションなしで削除
 
-  const pingInfo = PING_DEFINITIONS[pin.type] || { icon: chrome.runtime.getURL('icons/question.png'), label: '不明' };
+  const pingInfo = PING_DEFINITIONS[pin.type] || { icon: chrome.runtime.getURL('icons/question.png'), label: '不明' }; // デフォルトを疑問アイコンに
   const pinElement = document.createElement('div');
   pinElement.id = `pin-${pinId}`;
   pinElement.className = 'pin';
-  // ★★★ 'pin.createdBy.uid' をチェック ★★★
   const isMyPin = currentUser && pin.createdBy?.uid === currentUser.uid;
   if (isMyPin) {
       pinElement.classList.add('my-pin');
@@ -354,7 +354,6 @@ function renderPin(pinId, pin) {
   detailsDiv.appendChild(labelDiv);
   const userDiv = document.createElement('div');
   userDiv.className = 'pin-user';
-  // ★★★ 'pin.createdBy.displayName' などをチェック ★★★
   userDiv.textContent = pin.createdBy?.displayName || pin.createdBy?.email?.split('@')[0] || '不明';
   detailsDiv.appendChild(userDiv);
   pinElement.appendChild(detailsDiv);
@@ -362,23 +361,19 @@ function renderPin(pinId, pin) {
   if (isMyPin) {
     pinElement.title = 'クリックして削除';
     pinElement.addEventListener('click', () => {
-      // console.log(`CS: Requesting removal of my pin ${pinId}`);
       pinElement.classList.remove('show');
       pinElement.classList.add('hide');
-
       chrome.runtime.sendMessage({
           action: 'removePin',
-          meetingId: currentMeetingId, // ★★★ 会議IDを渡す ★★★
+          meetingId: currentMeetingId,
           pinId: pinId
       })
       .then(response => {
           if (response?.success) {
-             // 削除成功したらアニメーション後に要素削除
              setTimeout(() => removePinElement(pinId, false), 300);
           } else {
             console.error("CS: Failed to remove pin:", response?.error);
             showMessage(`エラー: ピンを削除できませんでした (${response?.error || '不明なエラー'})`, true);
-            // 失敗したら表示を戻す
              if(document.getElementById(`pin-${pinId}`)) {
                  pinElement.classList.remove('hide'); pinElement.classList.add('show');
              }
@@ -394,7 +389,6 @@ function renderPin(pinId, pin) {
     });
   }
 
-  // 自分のピンでない場合に音を鳴らす
   if (!isMyPin) {
     playSound();
   }
@@ -403,15 +397,14 @@ function renderPin(pinId, pin) {
   requestAnimationFrame(() => {
     pinElement.classList.add('show');
   });
-
-  userPins[pinId] = { element: pinElement }; // 管理オブジェクトに追加
+  userPins[pinId] = { element: pinElement };
 }
 
 function playSound() {
     try {
         const soundUrl = chrome.runtime.getURL('sounds/pin_created.mp3');
         const audio = new Audio(soundUrl);
-        audio.volume = 0.3; // 音量調整
+        audio.volume = 0.3;
         audio.play().catch(e => console.error('CS: Audio playback error:', e));
     } catch (error) {
         console.error('CS: Error in playSound function:', error);
@@ -425,22 +418,22 @@ function removePinElement(pinId, animate = true) {
     if (pinElement) {
         const performRemove = () => {
             if (pinElement.parentNode) pinElement.remove();
-            delete userPins[pinId]; // 管理オブジェクトから削除
+            delete userPins[pinId];
         };
 
         if (animate && pinElement.classList.contains('show')) {
             pinElement.classList.remove('show');
             pinElement.classList.add('hide');
-            setTimeout(performRemove, 300); // アニメーション時間後に削除
+            setTimeout(performRemove, 300);
         } else {
-            performRemove(); // アニメーションなしで即時削除
+            performRemove();
         }
     } else {
-        delete userPins[pinId]; // 要素が見つからない場合も管理オブジェクトからは削除
+        delete userPins[pinId];
     }
 }
 
-// --- メッセージ表示関連 (変更なし) ---
+// --- メッセージ表示関連 ---
 let messageTimeout;
 function showMessage(text, isError = false) {
   let messageArea = document.getElementById('ping-message');
@@ -449,9 +442,9 @@ function showMessage(text, isError = false) {
 
   if (messageTimeout) clearTimeout(messageTimeout);
   messageArea.textContent = text;
-  messageArea.className = 'ping-message-area'; // 基本クラスをまず設定
-  messageArea.classList.add(isError ? 'error' : 'success'); // 状態クラス追加
-  messageArea.classList.add('show'); // 表示クラス追加
+  messageArea.className = 'ping-message-area';
+  messageArea.classList.add(isError ? 'error' : 'success');
+  messageArea.classList.add('show');
 
   messageTimeout = setTimeout(() => {
     messageArea.classList.remove('show');
