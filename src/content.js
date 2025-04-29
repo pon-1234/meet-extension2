@@ -217,6 +217,10 @@ function setupUI() {
     option.addEventListener('click', (event) => {
       event.stopPropagation();
       pingMenu.classList.add('hidden');
+
+      // ★デバッグログ追加: どのピンがクリックされたか
+      console.log(`CS: Ping option clicked - Type: ${key}, Meeting ID: ${currentMeetingId}`);
+
       chrome.runtime.sendMessage({
           action: 'createPin',
           meetingId: currentMeetingId,
@@ -402,12 +406,16 @@ function renderPin(pinId, pin) {
 
 function playSound() {
     try {
+        // 再生する音声ファイルのURLを取得
         const soundUrl = chrome.runtime.getURL('sounds/pin_created.mp3');
+        // Audioオブジェクトを作成
         const audio = new Audio(soundUrl);
+        // ★★★ 音量を調整（例: 0.3 = 30%） ★★★
         audio.volume = 0.3;
-        audio.play().catch(e => console.error('CS: Audio playback error:', e));
+        // 音声を再生
+        audio.play().catch(e => console.error('CS: 音声再生エラー:', e));
     } catch (error) {
-        console.error('CS: Error in playSound function:', error);
+        console.error('CS: playSound関数でエラー:', error);
     }
 }
 
