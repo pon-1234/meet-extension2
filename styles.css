@@ -85,7 +85,7 @@
   width: 48px; /* Reactコードの w-12 */
   height: 48px;/* Reactコードの h-12 */
   border-radius: 50%;
-  background-color: rgba(107, 114, 128, 0.85); /* 薄いグレー (bg-gray-500 相当) */
+  background-color: rgba(75, 85, 99, 0.85); /* 濃いグレー (bg-gray-700 相当) */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -94,7 +94,7 @@
   /* transform はJSで設定 */
 }
 .ping-option:hover {
-  background-color: rgba(156, 163, 175, 0.9); /* 新しい背景色より少し明るく (bg-gray-400 相当) */
+  background-color: rgba(107, 114, 128, 0.9); /* 新しい背景色より少し明るく (bg-gray-600 相当) */
 }
 
 /* オプション内のアイコン */
