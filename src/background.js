@@ -409,34 +409,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
-        // console.log(`BG: Attempting to create pin in ${meetingId} for user ${currentUser.uid}`);
-        const pinsRef = ref(database, `meetings/${meetingId}/pins`);
-        const newPinRef = push(pinsRef);
-
-        const pinPayload = {
-          ...pinData,
-          createdBy: { // createdBy オブジェクトを追加
-             uid: currentUser.uid,
-             displayName: currentUser.displayName,
-             email: currentUser.email // 必要であればemailも追加
-          },
-          timestamp: serverTimestamp() // Firebaseサーバータイムスタンプを使用
-        };
-
-        // console.log("BG: Setting pin payload:", pinPayload);
-
+        // データベース書き込み処理
         try {
-          await set(newPinRef, pinPayload);
-          // console.log(`BG: Pin created successfully in ${meetingId}: ${newPinRef.key}`);
+          const pinsRef = ref(database, `meetings/${meetingId}/pins`);
+          const newPinRef = push(pinsRef); // push() で新しいユニークなキーを生成
+          const pinPayload = {
+            ...pinData,
+            createdBy: { // createdBy オブジェクトを追加
+               uid: currentUser.uid,
+               displayName: currentUser.displayName,
+               email: currentUser.email // 必要であればemailも追加
+            },
+            timestamp: serverTimestamp() // Firebaseサーバータイムスタンプを使用
+          };
+
+          await set(newPinRef, pinPayload); // set() でデータを書き込む
+          console.log(`BG: Pin created successfully: ${newPinRef.key} in ${meetingId}`);
+          // 成功した場合、Content Script には onChildAdded で通知されるのでここでは不要
           sendResponse({ success: true, pinId: newPinRef.key });
         } catch (error) {
           console.error(`BG: ピン作成エラー (${meetingId}):`, error);
+          // Permission Denied の場合、Content Script に通知
           if (error.code === 'PERMISSION_DENIED') {
-               sendResponse({ success: false, error: "データベースへの書き込み権限がありません。" });
-          } else {
-               sendResponse({ success: false, error: `DB書き込みエラー: ${error.message}` });
+            notifyPermissionErrorToContentScripts(meetingId);
           }
+          sendResponse({ success: false, error: error.message });
         }
+
+        return;
       } else if (typeof action === 'string' && action.trim() === 'removePin') {
          // console.log("BG: Processing removePin...");
          const { meetingId, pinId } = message;
