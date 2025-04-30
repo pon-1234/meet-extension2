@@ -2,7 +2,7 @@
 
 export const firebaseConfig = {
   // apiKey: "AIzaSyAT-3emNdtHDBqODO8cwyT8JE4aCa1nZbg", // !!! DANGER: DO NOT COMMIT API KEY HERE !!! Load securely (e.g., via environment variable)
-  apiKey: "", // TODO: Load API Key securely
+  apiKey: "AIzaSyAT-3emNdtHDBqODO8cwyT8JE4aCa1nZbg", // TODO: Load API Key securely
   authDomain: "meet-ping-extension.firebaseapp.com",
   databaseURL: "https://meet-ping-extension-default-rtdb.firebaseio.com/",
   projectId: "meet-ping-extension",
