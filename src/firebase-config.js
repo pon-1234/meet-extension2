@@ -1,23 +1,14 @@
 // firebase-config.js - モジュラー形式に変換
 
-import { initializeApp } from "firebase/app";
-import { getDatabase } from "firebase/database";
-
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  databaseURL: process.env.REACT_APP_FIREBASE_DATABASE_URL,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+export const firebaseConfig = {
+  // apiKey: "AIzaSyAT-3emNdtHDBqODO8cwyT8JE4aCa1nZbg", // !!! DANGER: DO NOT COMMIT API KEY HERE !!! Load securely (e.g., via environment variable)
+  apiKey: "", // TODO: Load API Key securely
+  authDomain: "meet-ping-extension.firebaseapp.com",
+  databaseURL: "https://meet-ping-extension-default-rtdb.firebaseio.com/",
+  projectId: "meet-ping-extension",
+  storageBucket: "meet-ping-extension.firebasestorage.app",
+  messagingSenderId: "217193969712",
+  appId: "1:217193969712:web:e5bf03e9544a87a010d5f5"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
-
 export const COMPANY_DOMAIN = 'rasa-jp.co.jp';
-
-export { database };
