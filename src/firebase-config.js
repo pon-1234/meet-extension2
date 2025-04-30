@@ -1,14 +1,37 @@
-// firebase-config.js - モジュラー形式に変換
+// firebase-config.js - モジュラー形式 & .env 読み込み (COMPANY_DOMAIN含む)
+
+// Webpack (dotenv-webpack) によってビルド時に .env の値が注入される
+const firebaseApiKey = process.env.FIREBASE_API_KEY;
+const authDomain = process.env.FIREBASE_AUTH_DOMAIN;
+const databaseURL = process.env.FIREBASE_DATABASE_URL;
+const projectId = process.env.FIREBASE_PROJECT_ID;
+const storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
+const messagingSenderId = process.env.FIREBASE_MESSAGING_SENDER_ID;
+const appId = process.env.FIREBASE_APP_ID;
+const companyDomain = process.env.COMPANY_DOMAIN; // COMPANY_DOMAINも環境変数から読み込む
+
+// .envファイルに値がない場合のチェック (任意ですが推奨)
+if (!firebaseApiKey) {
+  console.error("CRITICAL ERROR: Firebase API Key (FIREBASE_API_KEY) is missing in .env file.");
+}
+if (!authDomain) {
+  console.error("CRITICAL ERROR: Firebase Auth Domain (FIREBASE_AUTH_DOMAIN) is missing in .env file.");
+}
+// 他の必須項目についても同様にチェックを追加できます
+if (!companyDomain) {
+  console.warn("WARNING: Company domain (COMPANY_DOMAIN) is not set in .env. Domain restriction might not work as expected.");
+}
+
 
 export const firebaseConfig = {
-  // apiKey: "AIzaSyAT-3emNdtHDBqODO8cwyT8JE4aCa1nZbg", // !!! DANGER: DO NOT COMMIT API KEY HERE !!! Load securely (e.g., via environment variable)
-  apiKey: "AIzaSyAT-3emNdtHDBqODO8cwyT8JE4aCa1nZbg", // TODO: Load API Key securely
-  authDomain: "meet-ping-extension.firebaseapp.com",
-  databaseURL: "https://meet-ping-extension-default-rtdb.firebaseio.com/",
-  projectId: "meet-ping-extension",
-  storageBucket: "meet-ping-extension.firebasestorage.app",
-  messagingSenderId: "217193969712",
-  appId: "1:217193969712:web:e5bf03e9544a87a010d5f5"
+  apiKey: firebaseApiKey,
+  authDomain: authDomain,
+  databaseURL: databaseURL,
+  projectId: projectId,
+  storageBucket: storageBucket,
+  messagingSenderId: messagingSenderId,
+  appId: appId
 };
 
-export const COMPANY_DOMAIN = 'rasa-jp.co.jp';
+// COMPANY_DOMAIN も環境変数から読み込んだ値を使用
+export const COMPANY_DOMAIN = companyDomain;
