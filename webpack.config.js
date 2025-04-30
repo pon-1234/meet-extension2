@@ -3,6 +3,9 @@ const webpack = require('webpack');
 const CopyPlugin = require('copy-webpack-plugin');
 const Dotenv = require('dotenv-webpack'); // dotenv-webpack をインポート
 
+// dotenvを直接使用して.envファイルを読み込む
+require('dotenv').config();
+
 module.exports = {
   mode: 'production', // or 'development'
   entry: {
@@ -37,7 +40,10 @@ module.exports = {
     }
   },
   plugins: [
-    new Dotenv(), // ★ Dotenvプラグインを追加して.envファイルを読み込む
+    new Dotenv({
+      path: path.resolve(__dirname, '.env'), // .envファイルのパスを明示的に指定
+      systemvars: true, // システム環境変数も使用可能にする
+    }), // ★ Dotenvプラグインを追加して.envファイルを読み込む
     new CopyPlugin({
       patterns: [
         // ★ manifest.json のコピー時に transform を使用して client_id を置換
