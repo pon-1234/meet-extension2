@@ -23,7 +23,25 @@ module.exports = {
   },
   module: {
     rules: [
-      // 必要に応じて他のローダーを追加
+      {
+        test: /\.js$/,
+        exclude: /node_modules/,
+        use: {
+          loader: 'babel-loader',
+          options: {
+            presets: ['@babel/preset-env']
+          }
+        }
+      },
+      {
+        test: /\.js$/,
+        loader: 'string-replace-loader',
+        options: {
+          search: 'https://apis.google.com/js/api.js',
+          replace: '',
+          flags: 'g' // グローバル置換
+        }
+      }
     ]
   },
   resolve: {
@@ -79,10 +97,12 @@ module.exports = {
       /@firebase[\\/]auth[\\/]dist[\\/].*?[\\/]recaptcha-loader\.js/,
       require.resolve('./src/empty-module.js')
     ),
+    /* ★ string-replace-loader に置き換えたためコメントアウト
     new webpack.NormalModuleReplacementPlugin(
       /https:\/\/apis\.google\.com\/js\/api\.js/,
       require.resolve('./src/empty-module.js')
     ),
+    */
     new webpack.NormalModuleReplacementPlugin(
       /https:\/\/www\.google\.com\/recaptcha\/(api|enterprise)\.js/,
       require.resolve('./src/empty-module.js')
