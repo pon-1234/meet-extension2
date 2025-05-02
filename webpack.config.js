@@ -1,9 +1,9 @@
+// webpack.config.js
+
 const path = require('path');
 const webpack = require('webpack');
 const CopyPlugin = require('copy-webpack-plugin');
-const Dotenv = require('dotenv-webpack'); // dotenv-webpack をインポート
-
-// dotenvを直接使用して.envファイルを読み込む
+const Dotenv = require('dotenv-webpack');
 require('dotenv').config();
 
 module.exports = {
@@ -16,79 +16,88 @@ module.exports = {
   output: {
     filename: '[name].bundle.js',
     path: path.resolve(__dirname, 'dist'),
-    clean: true,
+    clean: true, // distフォルダをビルド前にクリーンアップ
   },
   optimization: {
     minimize: true // 本番ビルドでは圧縮を有効化
   },
   module: {
-    rules: [
-      {
-        test: /\.js$/,
-        exclude: /node_modules/,
-        use: {
-          loader: 'babel-loader',
-          options: {
-            presets: ['@babel/preset-env']
-          }
-        }
-      },
-      {
-        test: /\.js$/,
-        loader: 'string-replace-loader',
-        options: {
-          search: 'https://apis.google.com/js/api.js',
-          replace: '',
-          flags: 'g' // グローバル置換
-        }
-      }
-    ]
+      rules: [
+          { // string-replace-loader を念のため最初の方に
+              test: /\.js$/,
+              loader: 'string-replace-loader',
+              options: {
+                  search: 'https://apis.google.com/js/api.js', // GAPIの読み込み試行箇所を置換
+                  replace: '',
+                  flags: 'g'
+              },
+              enforce: 'pre' // 他のローダーより先に適用
+          },
+          {
+              test: /\.js$/,
+              exclude: /node_modules/,
+              use: {
+                  loader: 'babel-loader',
+                  options: {
+                      presets: ['@babel/preset-env']
+                  }
+              }
+          },
+          // 他のルール... (string-replace-loaderの他の設定はコメントアウトされているので不要)
+      ]
   },
   resolve: {
-    fallback: {
-      'http': false,
-      'https': false,
-      'url': false,
-      'util': false,
-      'stream': false,
-      'zlib': false,
-      'assert': false,
-      'buffer': false,
-      'crypto': false
-    }
+      fallback: {
+          'http': false,
+          'https': false,
+          'url': false,
+          'util': false,
+          'stream': false,
+          'zlib': false,
+          'assert': false,
+          'buffer': false,
+          'crypto': false
+      }
   },
   plugins: [
     new Dotenv({
-      path: path.resolve(__dirname, '.env'), // .envファイルのパスを明示的に指定
-      systemvars: true, // システム環境変数も使用可能にする
-    }), // ★ Dotenvプラグインを追加して.envファイルを読み込む
-    new CopyPlugin({
-      patterns: [
-        // ★ manifest.json のコピー時に transform を使用して client_id を置換
-        {
-          from: 'manifest.json', // ルートのmanifest.jsonを参照
-          to: 'manifest.json',
-          transform(content, path) {
-            const manifest = JSON.parse(content.toString());
-            // process.env は dotenv-webpack によって .env の値が読み込まれている
-            if (process.env.OAUTH_CLIENT_ID) {
-              manifest.oauth2.client_id = process.env.OAUTH_CLIENT_ID;
-            } else {
-              console.error("CRITICAL ERROR: OAUTH_CLIENT_ID is missing in .env file. Manifest will contain placeholder.");
-              manifest.oauth2.client_id = "YOUR_OAUTH_CLIENT_ID_MISSING_IN_ENV"; // エラー時やデフォルト値
-            }
-            // 他のmanifestの値も必要ならここで置換可能
-            return JSON.stringify(manifest, null, 2); // 整形して返す
-          },
-        },
-        { from: 'popup.html', to: 'popup.html' },
-        { from: 'popup.css', to: 'popup.css' },
-        { from: 'styles.css', to: 'styles.css' },
-        { from: 'icons', to: 'icons' },
-        { from: 'sounds', to: 'sounds' },
-      ],
+      path: path.resolve(__dirname, '.env'),
+      systemvars: true,
     }),
-    // --- 以下の NormalModuleReplacementPlugin の設定は変更不要 ---
+    new CopyPlugin({
+        patterns: [
+            {
+              from: 'manifest.json',
+              to: 'manifest.json',
+              transform(content, path) {
+                const manifest = JSON.parse(content.toString());
+                if (process.env.OAUTH_CLIENT_ID) {
+                  manifest.oauth2.client_id = process.env.OAUTH_CLIENT_ID;
+                } else {
+                  console.error("CRITICAL ERROR: OAUTH_CLIENT_ID is missing in .env file. Manifest will contain placeholder.");
+                  manifest.oauth2.client_id = "YOUR_OAUTH_CLIENT_ID_MISSING_IN_ENV";
+                }
+                return JSON.stringify(manifest, null, 2);
+              },
+            },
+            { from: 'popup.html', to: 'popup.html' },
+            { from: 'popup.css', to: 'popup.css' },
+            { from: 'styles.css', to: 'styles.css' },
+            { from: 'icons', to: 'icons' },
+            { from: 'sounds', to: 'sounds' },
+          ],
+    }),
+    // ★ DefinePlugin を追加して Firebase SDK の挙動を制御
+    new webpack.DefinePlugin({
+         'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+         // Firebase Auth SDK v9+ で reCAPTCHA や GAPI の読み込みを抑制するためのフラグ
+         // (これらの正確な名前や効果はSDKバージョンにより変動する可能性あり)
+         // 'FIREBASE_AUTH_SUPPORTS_RECAPTCHA': JSON.stringify(false), // 試す価値あり
+         // 'FIREBASE_AUTH_SUPPORTS_GAPI': JSON.stringify(false), // 試す価値あり
+         // サービスワーカー環境であることを示す（これにより不要なブラウザAPI呼び出しが抑制される場合がある）
+         'typeof navigator': JSON.stringify('undefined'),
+    }),
+    // 既存の NormalModuleReplacementPlugin は維持する
     new webpack.NormalModuleReplacementPlugin(
       /@firebase[\\/]auth[\\/]dist[\\/].*?[\\/](iframe|gapi)-loader\.js/,
       require.resolve('./src/empty-module.js')
@@ -97,17 +106,11 @@ module.exports = {
       /@firebase[\\/]auth[\\/]dist[\\/].*?[\\/]recaptcha-loader\.js/,
       require.resolve('./src/empty-module.js')
     ),
-    /* ★ string-replace-loader に置き換えたためコメントアウト
     new webpack.NormalModuleReplacementPlugin(
-      /https:\/\/apis\.google\.com\/js\/api\.js/,
-      require.resolve('./src/empty-module.js')
-    ),
-    */
-    new webpack.NormalModuleReplacementPlugin(
-      /https:\/\/www\.google\.com\/recaptcha\/(api|enterprise)\.js/,
+      // reCAPTCHA の URL を直接参照している箇所も空モジュールに置換
+      /https:\/\/www\.google\.com\/recaptcha\/(api|enterprise)\.js(\?render=)?/,
       require.resolve('./src/empty-module.js')
     )
   ],
-  // mode が 'development' の場合は devtool: 'cheap-module-source-map' などにする
   devtool: false, // 本番ビルドではソースマップを無効化
 };
