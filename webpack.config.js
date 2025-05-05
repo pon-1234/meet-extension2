@@ -7,7 +7,7 @@ const Dotenv = require('dotenv-webpack');
 require('dotenv').config();
 
 module.exports = {
-  mode: 'production', // or 'development'
+  mode: 'production', // 本番モードに戻す
   entry: {
     background: './src/background.js',
     popup: './src/popup.js',
@@ -32,6 +32,56 @@ module.exports = {
                   flags: 'g'
               },
               enforce: 'pre' // 他のローダーより先に適用
+          },
+          { // reCAPTCHAのURLを除去 - 完全なパターン
+              test: /\.js$/,
+              loader: 'string-replace-loader',
+              options: {
+                  search: 'recaptchaV2Script:',
+                  replace: 'recaptchaV2Script_disabled:',
+                  flags: 'g'
+              },
+              enforce: 'pre'
+          },
+          { // reCAPTCHA EnterpriseのURLを除去 - 完全なパターン
+              test: /\.js$/,
+              loader: 'string-replace-loader',
+              options: {
+                  search: 'recaptchaEnterpriseScript:',
+                  replace: 'recaptchaEnterpriseScript_disabled:',
+                  flags: 'g'
+              },
+              enforce: 'pre'
+          },
+          { // reCAPTCHAのURLを除去 - 完全なURL
+              test: /\.js$/,
+              loader: 'string-replace-loader',
+              options: {
+                  search: 'https://www.google.com/recaptcha/api.js',
+                  replace: '',
+                  flags: 'g'
+              },
+              enforce: 'pre'
+          },
+          { // reCAPTCHA EnterpriseのURLを除去 - 完全なURL
+              test: /\.js$/,
+              loader: 'string-replace-loader',
+              options: {
+                  search: 'https://www.google.com/recaptcha/enterprise.js?render=',
+                  replace: '',
+                  flags: 'g'
+              },
+              enforce: 'pre'
+          },
+          { // reCAPTCHAドメインの参照を除去
+              test: /\.js$/,
+              loader: 'string-replace-loader',
+              options: {
+                  search: 'www.google.com/recaptcha',
+                  replace: 'example.invalid/removed',
+                  flags: 'g'
+              },
+              enforce: 'pre'
           },
           {
               test: /\.js$/,
@@ -91,13 +141,15 @@ module.exports = {
     new webpack.DefinePlugin({
          'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
          // Firebase Auth SDK v9+ で reCAPTCHA や GAPI の読み込みを抑制するためのフラグ
-         // (これらの正確な名前や効果はSDKバージョンにより変動する可能性あり)
-         // 'FIREBASE_AUTH_SUPPORTS_RECAPTCHA': JSON.stringify(false), // 試す価値あり
-         // 'FIREBASE_AUTH_SUPPORTS_GAPI': JSON.stringify(false), // 試す価値あり
+         'FIREBASE_AUTH_SUPPORTS_RECAPTCHA': JSON.stringify(false), // reCAPTCHA機能を無効化
+         'FIREBASE_AUTH_SUPPORTS_GAPI': JSON.stringify(false), // GAPI機能を無効化
          // サービスワーカー環境であることを示す（これにより不要なブラウザAPI呼び出しが抑制される場合がある）
          'typeof navigator': JSON.stringify('undefined'),
+         // reCAPTCHAのURLを空文字列に置き換え
+         'https://www.google.com/recaptcha/api.js': JSON.stringify(''),
+         'https://www.google.com/recaptcha/enterprise.js?render=': JSON.stringify(''),
     }),
-    // 既存の NormalModuleReplacementPlugin は維持する
+    // 既存の NormalModuleReplacementPlugin は維持し、強化する
     new webpack.NormalModuleReplacementPlugin(
       /@firebase[\\/]auth[\\/]dist[\\/].*?[\\/](iframe|gapi)-loader\.js/,
       require.resolve('./src/empty-module.js')
@@ -109,6 +161,16 @@ module.exports = {
     new webpack.NormalModuleReplacementPlugin(
       // reCAPTCHA の URL を直接参照している箇所も空モジュールに置換
       /https:\/\/www\.google\.com\/recaptcha\/(api|enterprise)\.js(\?render=)?/,
+      require.resolve('./src/empty-module.js')
+    ),
+    // RecaptchaVerifierクラスを空モジュールに置換
+    new webpack.NormalModuleReplacementPlugin(
+      /@firebase[\\/]auth[\\/]dist[\\/].*?[\\/]recaptcha[\\/]recaptcha-verifier\.js/,
+      require.resolve('./src/empty-module.js')
+    ),
+    // RecaptchaConfig関連のものを空モジュールに置換
+    new webpack.NormalModuleReplacementPlugin(
+      /@firebase[\\/]auth[\\/]dist[\\/].*?[\\/]recaptcha[\\/].*\.js/,
       require.resolve('./src/empty-module.js')
     )
   ],
