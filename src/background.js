@@ -1,4 +1,4 @@
-// src/background.js (会議IDごとのリスナー管理、非同期初期化、エラーハンドリング改善)
+// src/background.js (会議IDごとのリスナー管理、非同期初期化、エラーハンドリング改善, デスクトップ通知追加)
 
 import { initializeApp } from 'firebase/app';
 import {
@@ -17,38 +17,42 @@ import {
   push,
   set,
   remove,
-  serverTimestamp // serverTimestamp をインポート
+  serverTimestamp
 } from 'firebase/database';
 import { firebaseConfig, COMPANY_DOMAIN } from './firebase-config';
 
 let firebaseInitialized = false;
-let app = null; // Firebase App インスタンスを保持
+let app = null;
 let auth = null;
 let database = null;
 let currentUser = null;
 let activeListeners = {}; // { meetingId: { ref, listeners: { added, removed } } }
 
+// content.js と同様のピン定義 (通知アイコンに使用)
+const PING_DEFINITIONS = {
+    question: { icon: 'icons/question.png', label: '疑問' },
+    onMyWay: { icon: 'icons/onMyWay.png', label: '任せて' },
+    danger: { icon: 'icons/danger.png', label: '撤退' },
+    assist: { icon: 'icons/assist.png', label: '助けて' },
+    goodJob: { icon: 'icons/goodJob.png', label: 'いい感じ' },
+    finishHim: { icon: 'icons/finishHim.png', label: 'トドメだ' },
+    needInfo: { icon: 'icons/needInfo.png', label: '情報が必要' },
+    changePlan: { icon: 'icons/changePlan.png', label: '作戦変更' },
+};
+
+
 // --- Firebase 初期化関数 (async) ---
 async function initializeFirebase() {
-  // console.log('BG: Firebase 初期化処理開始...'); // ログは必要に応じて調整
   if (firebaseInitialized) {
-    // console.log("BG: Firebaseは既に初期化済みです");
     return { success: true };
   }
-
   try {
-    app = initializeApp(firebaseConfig); // app インスタンスを保持
-    // console.log('BG: Firebase Appが初期化されました');
-
+    app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     database = getDatabase(app);
-    // console.log('BG: Firebase Auth/Databaseインスタンスを取得しました');
-
     firebaseInitialized = true;
     setupAuthListener();
-    // console.log('BG: Firebase初期化完了');
     return { success: true };
-
   } catch (error) {
     console.error('BG: Firebase初期化中の致命的エラー:', error);
     firebaseInitialized = false;
@@ -61,28 +65,22 @@ function setupAuthListener() {
   if (!auth) { console.error("BG: Auth listener setup failed - Auth not initialized"); return; }
 
   onAuthStateChanged(auth, (user) => {
-    // console.log("BG: onAuthStateChanged triggered. user:", user ? user.email : 'null');
     const previousUser = currentUser;
     let isAllowedDomain = false;
 
     if (user && user.email) {
         if (COMPANY_DOMAIN) {
-            // console.log(`BG: Checking email "${user.email}" against domain "@${COMPANY_DOMAIN}"`);
             isAllowedDomain = user.email.endsWith(`@${COMPANY_DOMAIN}`);
-            // console.log(`BG: Domain check result: ${isAllowedDomain}`);
         } else {
             console.warn("BG: COMPANY_DOMAIN is not defined or empty. Domain check skipped, allowing user.");
             isAllowedDomain = true;
         }
     } else {
-        // console.log("BG: User logged out or email is missing.");
         isAllowedDomain = false;
     }
 
     if (isAllowedDomain) {
       currentUser = { uid: user.uid, email: user.email, displayName: user.displayName || user.email.split('@')[0] };
-      // console.log("BG: User authenticated:", currentUser.email);
-      // 認証が変わった場合、アクティブなタブに対してリスナーを開始し直す
       startListenersForActiveMeetTabs();
     } else {
       if (user) {
@@ -94,7 +92,6 @@ function setupAuthListener() {
     }
 
     if (JSON.stringify(previousUser) !== JSON.stringify(currentUser)) {
-        // console.log("BG: Auth status changed, notifying contexts.");
         notifyAuthStatusToAllContexts();
     }
   }, (error) => {
@@ -130,37 +127,61 @@ function notifyAuthStatusToPopup() {
 // --- データベースリスナー関連 ---
 function startDbListener(meetingId) {
     if (!currentUser || !database || !meetingId) {
-        // console.log(`BG: Cannot start listener for ${meetingId} - User:${!!currentUser}, DB:${!!database}`);
         return;
     }
     if (activeListeners[meetingId]) {
-        // console.log(`BG: Listener for ${meetingId} already active.`);
         return;
     }
     console.log(`BG: Starting DB listener for ${meetingId}`);
-    const pinsRef = ref(database, `meetings/${meetingId}/pins`); // 正しいパス
+    const pinsRef = ref(database, `meetings/${meetingId}/pins`);
     const listeners = {};
 
     try {
         listeners.added = onChildAdded(pinsRef, (snapshot) => {
-            // console.log(`BG: Pin added in ${meetingId}: ${snapshot.key}`);
             const pinId = snapshot.key;
             const pin = snapshot.val();
             notifyPinUpdateToContentScripts(meetingId, 'pinAdded', { pinId, pin });
+
+            // --- デスクトップ通知作成処理 ---
+            if (pin && pin.createdBy && currentUser && pin.createdBy.uid !== currentUser.uid) {
+                const pinDef = PING_DEFINITIONS[pin.type] || { label: pin.type, icon: 'icons/icon48.png' }; // デフォルトアイコン
+                let iconUrl = chrome.runtime.getURL(pinDef.icon); // manifestのweb_accessible_resourcesのパスに合わせる
+
+                chrome.notifications.create(
+                    `pin-${meetingId}-${pinId}`, // 通知ID
+                    {
+                        type: 'basic',
+                        iconUrl: iconUrl,
+                        title: `新しいピン: ${pinDef.label}`,
+                        message: `${pin.createdBy.displayName || pin.createdBy.email.split('@')[0]}さんがピンを送信しました。\n会議: ${meetingId}`,
+                        priority: 1,
+                    },
+                    (notificationId) => {
+                        if (chrome.runtime.lastError) {
+                            console.error('BG: 通知作成エラー:', chrome.runtime.lastError.message);
+                        }
+                    }
+                );
+            }
+            // --- 通知作成処理ここまで ---
+
         }, (error) => {
             console.error(`BG: DB listener error (child_added) for ${meetingId}:`, error);
             if (error.code === 'PERMISSION_DENIED') notifyPermissionErrorToContentScripts(meetingId);
-            stopDbListener(meetingId); // エラー時もリスナー停止
+            stopDbListener(meetingId);
         });
 
         listeners.removed = onChildRemoved(pinsRef, (snapshot) => {
-            // console.log(`BG: Pin removed in ${meetingId}: ${snapshot.key}`);
             const pinId = snapshot.key;
             notifyPinUpdateToContentScripts(meetingId, 'pinRemoved', { pinId });
+            // 対応する通知があれば削除 (オプション)
+            chrome.notifications.clear(`pin-${meetingId}-${pinId}`, (wasCleared) => {
+                if (chrome.runtime.lastError) { /* console.warn('Error clearing notification:', chrome.runtime.lastError.message); */ }
+            });
         }, (error) => {
             console.error(`BG: DB listener error (child_removed) for ${meetingId}:`, error);
             if (error.code === 'PERMISSION_DENIED') notifyPermissionErrorToContentScripts(meetingId);
-            stopDbListener(meetingId); // エラー時もリスナー停止
+            stopDbListener(meetingId);
         });
 
         activeListeners[meetingId] = { ref: pinsRef, listeners: listeners };
@@ -174,7 +195,6 @@ function stopDbListener(meetingId) {
     if (listenerInfo) {
         console.log(`BG: Stopping DB listener for ${meetingId}`);
         try {
-            // off() を呼ぶ前にリスナー関数が存在するか確認
             if (listenerInfo.listeners.added) {
                 off(listenerInfo.ref, 'child_added', listenerInfo.listeners.added);
             }
@@ -203,14 +223,12 @@ function startListenersForActiveMeetTabs() {
                     const meetingId = extractMeetingIdFromUrl(tab.url);
                     if (meetingId) {
                         activeMeetingIds.add(meetingId);
-                        if (!activeListeners[meetingId]) { // まだリスナーがなければ開始
-                           // console.log(`BG: Found active Meet tab: ${meetingId}, starting listener.`);
+                        if (!activeListeners[meetingId]) {
                             startDbListener(meetingId);
                         }
                     }
                 }
             });
-            // 不要になったリスナーを停止 (現在開いているタブにないリスナー)
             Object.keys(activeListeners).forEach(listeningId => {
                 if (!activeMeetingIds.has(listeningId)) {
                     console.log(`BG: Stopping listener for inactive meeting: ${listeningId}`);
@@ -223,7 +241,7 @@ function startListenersForActiveMeetTabs() {
 
 // --- Content Script への通知ヘルパー (会議IDでフィルタリング) ---
 function notifyPinUpdateToContentScripts(targetMeetingId, action, data) {
-    chrome.tabs.query({ url: `https://meet.google.com/${targetMeetingId}*` }) // URLで直接絞り込み
+    chrome.tabs.query({ url: `https://meet.google.com/${targetMeetingId}*` })
         .then(tabs => {
             tabs.forEach(tab => {
                 if(tab.id) {
@@ -250,9 +268,8 @@ function notifyPermissionErrorToContentScripts(targetMeetingId) {
 
 // --- Googleログイン処理 ---
 async function signInWithGoogle() {
-  // console.log("BG: Starting Google Sign-In process...");
   try {
-    const initResult = await initializeFirebase(); // 先に初期化を試みる
+    const initResult = await initializeFirebase();
     if (!initResult.success) {
       console.error("BG: Firebase initialization failed, aborting sign-in:", initResult.error);
       return { success: false, error: initResult.error };
@@ -270,9 +287,7 @@ async function signInWithGoogle() {
         }
       });
     });
-    // console.log("BG: Got auth token from Chrome Identity API.");
     const credential = GoogleAuthProvider.credential(null, authToken);
-    // console.log("BG: Signing in with Firebase credential...");
     await signInWithCredential(auth, credential);
     console.log("BG: Google Sign-In successful (Firebase).");
     return { success: true };
@@ -292,47 +307,31 @@ function extractMeetingIdFromUrl(url) {
 
 // --- メッセージ送信エラーハンドリング ---
 function handleMessageError(error, targetDesc, actionDesc = 'message') {
-    if (!error) return; // エラーがなければ何もしない
-    // 無視して良いエラーか判定
+    if (!error) return;
     const ignoreErrors = ['Receiving end does not exist', 'Extension context invalidated'];
     if (!ignoreErrors.some(msg => error.message?.includes(msg))) {
         console.warn(`BG: Error sending ${actionDesc} to ${targetDesc}: ${error.message || error}`);
     }
 }
 
-
 // --- タブ更新/削除リスナー ---
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // status 'loading' でもURLが変わる場合があるので注意（必要なら 'loading' も含める）
   if ((changeInfo.status === 'complete' || changeInfo.url) && tab.url && tab.url.includes("meet.google.com/")) {
-    // console.log(`BG: Tab updated: ${tabId}, Status: ${changeInfo.status}, URL: ${tab.url}`);
-    const meetingId = extractMeetingIdFromUrl(tab.url);
-    // Content ScriptにURL更新を通知（これによりCS側でリスナー開始/停止依頼が行われる）
     chrome.tabs.sendMessage(tabId, { action: 'urlUpdated', url: tab.url })
         .catch(error => handleMessageError(error, tabId, 'urlUpdated'));
-
-    // Background側でも状態変化に応じてリスナーを同期
     startListenersForActiveMeetTabs();
   }
 });
 
 chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
-    // console.log(`BG: Tab removed: ${tabId}. Checking for listener cleanup.`);
-    // どのタブがどの会議IDだったかを正確に知るのは難しい
-    // 代わりに、定期的にアクティブなタブをチェックして不要なリスナーを削除する
-    // (startListenersForActiveMeetTabs が呼ばれるタイミングで実質的に行われる)
-    // もしくは、ここで単純に startListenersForActiveMeetTabs を呼んでも良い
     startListenersForActiveMeetTabs();
 });
-
 
 // --- メッセージリスナー ---
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       const initResult = await initializeFirebase();
-      // console.log("BG: Message received:", message.action, "Firebase Initialized:", firebaseInitialized);
-
       if (!initResult.success || !firebaseInitialized) {
         console.error("BG: Firebase not initialized, cannot process message:", message.action);
         sendResponse({ success: false, error: "バックグラウンド処理の準備ができていません" });
@@ -342,23 +341,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const action = message.action;
 
       if (typeof action === 'string' && action.trim() === 'getAuthStatus') {
-        // console.log("BG: Processing getAuthStatus...");
         sendResponse({ user: currentUser });
         return;
-      } else if (typeof action === 'string' && action.trim() === 'requestLogin') { // Popupからのログイン要求アクション名変更
-        console.log("BG: Processing requestLogin...");
+      } else if (typeof action === 'string' && action.trim() === 'requestLogin') {
         const result = await signInWithGoogle();
-        sendResponse({ started: result.success, error: result.error?.message }); // 結果を返す
+        sendResponse({ started: result.success, error: result.error?.message });
         return;
-      } else if (typeof action === 'string' && action.trim() === 'requestLogout') { // Popupからのログアウトリクエスト
-        console.log("BG: Processing requestLogout...");
+      } else if (typeof action === 'string' && action.trim() === 'requestLogout') {
         if (auth) {
             try {
                 await signOut(auth);
                 console.log("BG: User signed out successfully.");
-                // currentUser = null; // onAuthStateChangedで処理される
-                // stopAllListeners(); // onAuthStateChangedで処理される
-                // notifyAuthStatusToAllContexts(); // onAuthStateChangedで処理される
                 sendResponse({ success: true });
             } catch(error) {
                 console.error("BG: Sign out error:", error);
@@ -371,7 +364,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       } else if (typeof action === 'string' && action.trim() === 'startListening') {
           const { meetingId } = message;
-          // console.log(`BG: Processing startListening for ${meetingId}...`);
           if (meetingId) {
               startDbListener(meetingId);
               sendResponse({ success: true, message: `Listener started for ${meetingId}` });
@@ -381,7 +373,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
       } else if (typeof action === 'string' && action.trim() === 'stopListening') {
           const { meetingId } = message;
-          // console.log(`BG: Processing stopListening for ${meetingId}...`);
           if (meetingId) {
               stopDbListener(meetingId);
               sendResponse({ success: true, message: `Listener stopped for ${meetingId}` });
@@ -391,78 +382,57 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
       } else if (typeof action === 'string' && action.trim() === 'createPin') {
         const { meetingId, pinData } = message;
-        // console.log(`BG: Processing createPin for type: ${pinData?.type} in meeting: ${meetingId}`);
-
         if (!meetingId || !pinData || !pinData.type) {
-          console.error("BG: createPin - Missing parameters.");
           sendResponse({ success: false, error: "必須パラメータ(meetingId, pinData.type)が不足しています" });
           return;
         }
         if (!currentUser) {
-          console.warn("BG: createPin - User not authenticated.");
           sendResponse({ success: false, error: "認証されていません" });
           return;
         }
         if (!database) {
-          console.error("BG: createPin - Database not initialized.");
           sendResponse({ success: false, error: "データベースが初期化されていません" });
           return;
         }
-
-        // データベース書き込み処理
         try {
           const pinsRef = ref(database, `meetings/${meetingId}/pins`);
-          const newPinRef = push(pinsRef); // push() で新しいユニークなキーを生成
+          const newPinRef = push(pinsRef);
           const pinPayload = {
             ...pinData,
-            createdBy: { // createdBy オブジェクトを追加
+            createdBy: {
                uid: currentUser.uid,
                displayName: currentUser.displayName,
-               email: currentUser.email // 必要であればemailも追加
+               email: currentUser.email
             },
-            timestamp: serverTimestamp() // Firebaseサーバータイムスタンプを使用
+            timestamp: serverTimestamp()
           };
-
-          await set(newPinRef, pinPayload); // set() でデータを書き込む
-          console.log(`BG: Pin created successfully: ${newPinRef.key} in ${meetingId}`);
-          // 成功した場合、Content Script には onChildAdded で通知されるのでここでは不要
+          await set(newPinRef, pinPayload);
           sendResponse({ success: true, pinId: newPinRef.key });
         } catch (error) {
           console.error(`BG: ピン作成エラー (${meetingId}):`, error);
-          // Permission Denied の場合、Content Script に通知
           if (error.code === 'PERMISSION_DENIED') {
             notifyPermissionErrorToContentScripts(meetingId);
           }
           sendResponse({ success: false, error: error.message });
         }
-
         return;
       } else if (typeof action === 'string' && action.trim() === 'removePin') {
-         // console.log("BG: Processing removePin...");
          const { meetingId, pinId } = message;
           if (!meetingId || !pinId) {
-            console.error("BG: removePin - Missing parameters.");
             sendResponse({ success: false, error: "必須パラメータ(meetingId, pinId)が不足しています" });
             return;
           }
           if (!currentUser) {
-            console.warn("BG: removePin - User not authenticated.");
             sendResponse({ success: false, error: "認証されていません" });
             return;
           }
           if (!database) {
-            console.error("BG: removePin - Database not initialized.");
             sendResponse({ success: false, error: "データベースが初期化されていません" });
             return;
           }
-
-          // console.log(`BG: Attempting to remove pin ${pinId} from ${meetingId} by user ${currentUser.uid}`);
           const pinRef = ref(database, `meetings/${meetingId}/pins/${pinId}`);
-
           try {
-            // サーバー側で削除権限をチェックするため、クライアント側での作成者チェックは必須ではない
             await remove(pinRef);
-            // console.log(`BG: Pin removed successfully: ${pinId} from ${meetingId}`);
             sendResponse({ success: true });
           } catch (error) {
             console.error(`BG: ピン削除エラー (${meetingId}/${pinId}):`, error);
@@ -481,17 +451,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: `予期しないエラー: ${error.message || error}` });
     }
   })();
-
   return true; // Indicate that the response is asynchronous
 });
+
+// --- 通知クリック時のリスナー ---
+chrome.notifications.onClicked.addListener(async (notificationId) => {
+    console.log(`BG: 通知 ${notificationId} がクリックされました`);
+    if (notificationId.startsWith('pin-')) {
+        const parts = notificationId.split('-');
+        if (parts.length >= 3) { // pin-meetingId-pinId を想定
+            const meetingId = parts[1];
+            const meetUrlPattern = `*://meet.google.com/${meetingId}*`;
+
+            try {
+                const tabs = await chrome.tabs.query({ url: meetUrlPattern });
+                if (tabs.length > 0) {
+                    const targetTab = tabs[0];
+                    await chrome.tabs.update(targetTab.id, { active: true });
+                    if (targetTab.windowId) {
+                        await chrome.windows.update(targetTab.windowId, { focused: true });
+                    }
+                } else {
+                    // Meetタブが見つからない場合、新しいタブで開く (オプション)
+                    // chrome.tabs.create({ url: `https://meet.google.com/${meetingId}` });
+                    console.warn(`BG: 通知に対応するMeetタブ (${meetUrlPattern}) が見つかりません`);
+                }
+            } catch (error) {
+                console.error("BG: 通知クリック時のタブ操作エラー:", error);
+            }
+        }
+    }
+    chrome.notifications.clear(notificationId);
+});
+
 
 // --- 拡張機能インストール/起動時の処理 ---
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log("BG: Extension installed/updated.", details.reason);
-  await initializeFirebase(); // インストール/更新時にも初期化を試みる
+  await initializeFirebase();
 });
 
-// Service Worker起動時にFirebase初期化を試みる
 initializeFirebase().then(result => {
   console.log("BG: Initial Firebase initialization result:", result.success ? 'Success' : 'Failure', result.error || '');
 });

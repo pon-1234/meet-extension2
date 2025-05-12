@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Meet Ping Extension",
-  "version": "1.3",
+  "version": "1.4",
   "description": "Google Meetでゲームのようなピン機能を提供する拡張機能",
   "icons": {
     "16": "icons/icon16.png",
@@ -31,7 +31,8 @@
   ],
   "permissions": [
     "identity",
-    "tabs"
+    "tabs",
+    "notifications"
   ],
   "oauth2": {
     "client_id": "217193969712-071graoe05q4eit5jtk881kklc3o7u30.apps.googleusercontent.com",
