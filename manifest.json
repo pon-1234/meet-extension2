@@ -47,6 +47,7 @@
   "web_accessible_resources": [{
     "resources": [
        "icons/*.png",
+       "icons/*.svg",
        "sounds/*.mp3"
      ],
     "matches": ["*://meet.google.com/*"]

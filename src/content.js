@@ -1,4 +1,4 @@
-// content.js
+// src/content.js
 
 // --- グローバル変数 ---
 let currentUser = null;
@@ -179,10 +179,17 @@ function setupUI() {
   const pingCenter = document.createElement('div');
   pingCenter.id = 'ping-center';
   const centerIcon = document.createElement('img');
-  centerIcon.src = chrome.runtime.getURL('icons/center-pin.png');
-  centerIcon.alt = 'PING';
-  centerIcon.width = 32; centerIcon.height = 32;
+  centerIcon.src = chrome.runtime.getURL('icons/close-menu.svg');
+  centerIcon.alt = 'メニューを閉じる';
+  centerIcon.width = 24; // ★変更: 32 から 24 へ
+  centerIcon.height = 24; // ★変更: 32 から 24 へ
   pingCenter.appendChild(centerIcon);
+  pingCenter.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (pingMenu) {
+      pingMenu.classList.add('hidden');
+    }
+  });
   pingMenu.appendChild(pingCenter);
 
   Object.keys(PING_DEFINITIONS).forEach(key => {
@@ -196,7 +203,7 @@ function setupUI() {
     const iconDiv = document.createElement('div');
     iconDiv.className = 'ping-icon';
     const iconImg = document.createElement('img');
-    iconImg.src = pingInfo.icon; // アイコンファイルが存在することを確認
+    iconImg.src = pingInfo.icon;
     iconImg.alt = pingInfo.label;
     iconImg.width = 24; iconImg.height = 24;
     iconDiv.appendChild(iconImg);
@@ -204,7 +211,6 @@ function setupUI() {
 
     if (posInfo) {
       const angleRad = posInfo.angle * (Math.PI / 180);
-      // 少し距離を調整して重なりを避ける (オプション)
       const distance = posInfo.distance || 70;
       const x = Math.cos(angleRad) * distance;
       const y = Math.sin(angleRad) * distance;
@@ -218,7 +224,6 @@ function setupUI() {
       event.stopPropagation();
       pingMenu.classList.add('hidden');
 
-      // ★デバッグログ追加: どのピンがクリックされたか
       console.log(`CS: Ping option clicked - Type: ${key}, Meeting ID: ${currentMeetingId}`);
 
       chrome.runtime.sendMessage({
