@@ -15,18 +15,15 @@
 /* --- ピンメニューボタン (!) --- */
 #ping-menu-button {
   position: fixed; /* コンテナ基準ではなく画面基準 */
-  bottom: 20px;
-  left: 50px;
+  bottom: 65px;
+  left: 20px;
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background-color: #4285f4; /* Reactコードの blue-600 相当 */
-  color: white;
+  background-color: #333537; /* 新しい背景色 */
   border: none;
-  font-size: 24px;
-  font-weight: bold;
   cursor: pointer;
-  display: flex;
+  display: flex; /* Flexboxで中央揃え */
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
@@ -34,17 +31,25 @@
   z-index: 10001; /* メニューより手前 */
 }
 #ping-menu-button:hover {
-  background-color: #3367d6; /* Reactコードの blue-700 相当 */
+  background-color: #4f5254; /* ホバー時の背景色 (少し明るく) */
 }
+
+/* ピンメニューボタン内の画像スタイル */
+#ping-menu-button img {
+  width: 28px; /* アイコン画像のサイズ (適宜調整) */
+  height: 28px; /* アイコン画像のサイズ (適宜調整) */
+  object-fit: contain;
+}
+
 
 /* --- ピンメニュー (円形) --- */
 #ping-menu {
   position: fixed; /* コンテナ基準ではなく画面基準 */
   bottom: 80px; /* ボタンの少し上 */
-  left: 74px; /* ボタンの左端(50px) + ボタンの半径(24px) */
-  width: 170px; /* オプション配置を考慮したサイズ */
-  height: 170px;
-  /* background-color: rgba(55, 65, 81, 0.8); Reactの bg-gray-800 bg-opacity-80 */
+  left: 74px; /* ボタンの左端 + ボタンの半径 */
+  width: 190px; /* オプション配置を考慮したサイズ */
+  height: 190px;
+  background-color: rgba(55, 65, 81, 0.8); /* 元の背景色に戻す */
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -53,7 +58,8 @@
   opacity: 1;
   visibility: visible;
   z-index: 10000;
-  pointer-events: auto; /* メニュー自体はクリック可能に */
+  pointer-events: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); /* 影を元に戻すか、調整 */
 }
 #ping-menu.hidden {
   opacity: 0;
@@ -61,7 +67,7 @@
   pointer-events: none;
 }
 
-/* ピンメニュー中央 ("PING") */
+/* ピンメニュー中央の閉じるボタン */
 #ping-center {
   width: 64px;
   height: 64px;
@@ -70,7 +76,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1; /* オプションより手前 */
+  z-index: 3; /* ホバーされたオプションよりも常に手前に表示 */
+  cursor: pointer;
 }
 
 #ping-center img {
@@ -90,11 +97,38 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.15s;
+  transition: background-color 0.15s, z-index 0s ease 0.15s; /* z-indexのトランジションを遅延 */
+  z-index: 1; /* デフォルトのz-index */
   /* transform はJSで設定 */
 }
 .ping-option:hover {
   background-color: rgba(107, 114, 128, 0.9); /* 新しい背景色より少し明るく (bg-gray-600 相当) */
+  z-index: 2; /* ホバー時にz-indexを上げる */
+  transition-delay: 0s; /* ホバー時はz-indexのトランジション遅延なし */
+}
+
+/* ピンオプションのツールチップ */
+.ping-option-tooltip {
+  visibility: hidden; /* 初期状態は非表示 */
+  opacity: 0;
+  position: absolute;
+  bottom: -30px; /* アイコンの下に少しスペースを空けて表示 */
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(17, 24, 39, 0.95); /* より濃い背景 */
+  color: white;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap; /* ラベルが改行されないように */
+  z-index: 5; /* .ping-option 内での重なり順。親のz-indexが優先される */
+  transition: opacity 0.1s ease-in-out, visibility 0.1s ease-in-out;
+  pointer-events: none; /* ツールチップ自体がマウスイベントを拾わないように */
+}
+.ping-option:hover .ping-option-tooltip {
+  visibility: visible; /* ホバー時に表示 */
+  opacity: 1;
 }
 
 /* オプション内のアイコン */
@@ -109,7 +143,7 @@
   height: 24px;
   object-fit: contain;
 }
-/* オプション内のラベルは表示しない */
+/* オプション内のラベルは表示しない（ツールチップとして表示するため） */
 .ping-option .ping-label {
   display: none;
 }
@@ -185,37 +219,61 @@
   opacity: 0.7;
 }
 
-/* --- 成功メッセージ --- */
-#ping-message { /* 成功メッセージ */
+/* --- 成功/エラーメッセージ --- */
+#ping-message {
   position: fixed;
-  bottom: 20px; /* Reactコードの bottom-20 より下 */
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background-color: rgba(22, 163, 74, 0.9); /* Reactの bg-green-600 */
   color: white;
-  padding: 8px 16px; /* Reactの px-4 py-2 */
-  border-radius: 8px; /* Reactの rounded-lg */
+  padding: 8px 16px;
+  border-radius: 8px;
   font-size: 14px;
-  z-index: 10002; /* 最前面に */
-  opacity: 0; /* アニメーション用 */
+  z-index: 10002;
+  opacity: 0;
   transition: opacity 0.3s ease-in-out;
   pointer-events: none;
 }
 #ping-message.show {
   opacity: 1;
 }
+#ping-message.error {
+  background-color: rgba(220, 38, 38, 0.9);
+}
+#ping-message.success {
+  background-color: rgba(22, 163, 74, 0.9);
+}
 
 
-/* ログインプロンプト (もし使うなら) */
+/* ログインプロンプト */
 #ping-login-prompt {
   position: fixed;
   bottom: 20px;
-  left: 80px; /* ボタンの右隣あたり */
-  padding: 10px;
+  left: 110px;
+  padding: 10px 15px;
   background-color: #fce8e6;
   color: #c5221f;
+  border: 1px solid #f5c6cb;
   border-radius: 8px;
   z-index: 10000;
   font-size: 14px;
-  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+#ping-login-prompt button {
+    background-color: #c5221f;
+    color: white;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin-left: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.2s;
+}
+#ping-login-prompt button:hover {
+    background-color: #a5120f;
+}
+#ping-login-prompt button:disabled {
+    background-color: #e69a9a;
+    cursor: not-allowed;
 }
