@@ -1,0 +1,24 @@
+{
+  "rules": {
+    "meetings": {
+      "$meetingId": {
+        ".read": "auth != null && auth.token.email.endsWith('@rasa-jp.co.jp')",
+        "pins": {
+          "$pinId": {
+            ".write": "auth != null && auth.token.email.endsWith('@rasa-jp.co.jp') && (!data.exists() || data.child('createdBy/uid').val() === auth.uid)",
+            ".validate": "newData.hasChildren(['type', 'createdBy', 'timestamp']) && newData.child('createdBy').hasChildren(['uid', 'email'])"
+          }
+        },
+        "directPins": {
+          "$userId": {
+            ".read": "auth != null && auth.token.email.endsWith('@rasa-jp.co.jp') && auth.uid == $userId",
+            "$pinId": {
+              ".write": "auth != null && auth.token.email.endsWith('@rasa-jp.co.jp') && (auth.uid == $userId || (!data.exists() && newData.child('createdBy/uid').val() === auth.uid))",
+              ".validate": "newData.hasChildren(['type', 'createdBy', 'timestamp', 'targetUserId']) && newData.child('createdBy').hasChildren(['uid', 'email']) && newData.child('targetUserId').val() == $userId"
+            }
+          }
+        }
+      }
+    }
+  }
+} 

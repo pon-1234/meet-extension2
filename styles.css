@@ -86,6 +86,98 @@
   object-fit: contain;
 }
 
+/* --- サブメニュー --- */
+#ping-options-menu, #ping-participants-menu {
+  position: fixed;
+  bottom: 80px;
+  left: 74px;
+  width: 190px;
+  height: 190px;
+  background-color: rgba(55, 65, 81, 0.8);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+  opacity: 1;
+  visibility: visible;
+  z-index: 10000;
+  pointer-events: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+#ping-options-menu.hidden, #ping-participants-menu.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 戻るボタン */
+#ping-back-button, #participants-back-button {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: rgba(75, 85, 99, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  z-index: 3;
+}
+
+#ping-back-button:hover, #participants-back-button:hover {
+  background-color: rgba(107, 114, 128, 0.9);
+}
+
+#ping-back-button img, #participants-back-button img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+/* ピンモード選択オプション */
+.ping-mode-option {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background-color: rgba(75, 85, 99, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s, z-index 0s ease 0.15s;
+  z-index: 1;
+}
+
+.ping-mode-option:hover {
+  background-color: rgba(107, 114, 128, 0.9);
+  z-index: 2;
+  transition-delay: 0s;
+}
+
+/* 参加者選択オプション */
+.participant-option {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: rgba(75, 85, 99, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s, z-index 0s ease 0.15s;
+  z-index: 1;
+}
+
+.participant-option:hover {
+  background-color: rgba(107, 114, 128, 0.9);
+  z-index: 2;
+  transition-delay: 0s;
+}
+
 /* ピンオプション */
 .ping-option {
   position: absolute; /* #ping-menu 内での絶対配置 */
@@ -143,6 +235,39 @@
   height: 24px;
   object-fit: contain;
 }
+
+/* 文字アイコン */
+.ping-text-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: bold;
+  color: white;
+  width: 24px;
+  height: 24px;
+  text-align: center;
+  line-height: 1;
+}
+
+/* 戻るボタンの文字アイコン */
+#ping-back-button .ping-text-icon, 
+#participants-back-button .ping-text-icon {
+  font-size: 20px;
+}
+
+/* 参加者選択の文字アイコン */
+.participant-option .ping-text-icon {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ピンモード選択の文字アイコン */
+.ping-mode-option .ping-text-icon {
+  font-size: 20px;
+  font-weight: bold;
+}
+
 /* オプション内のラベルは表示しない（ツールチップとして表示するため） */
 .ping-option .ping-label {
   display: none;
@@ -190,6 +315,30 @@
 }
 .pin.my-pin:hover {
   background-color: rgba(55, 65, 81, 0.9); /* 元のホバー色 */
+}
+
+/* 個別ピンのスタイル */
+.pin.direct-pin {
+  background-color: rgba(59, 130, 246, 0.85); /* 青系の背景色 */
+  border: 2px solid rgba(59, 130, 246, 0.5); /* 青系のボーダー */
+}
+.pin.direct-pin:hover {
+  background-color: rgba(59, 130, 246, 0.95);
+}
+.pin.direct-pin.my-pin:hover {
+  background-color: rgba(37, 99, 235, 0.9); /* 少し濃い青 */
+}
+
+/* 送信した個別ピンのスタイル */
+.pin.sent-pin {
+  background-color: rgba(34, 197, 94, 0.85); /* 緑系の背景色 */
+  border: 2px solid rgba(34, 197, 94, 0.5); /* 緑系のボーダー */
+}
+.pin.sent-pin:hover {
+  background-color: rgba(34, 197, 94, 0.95);
+}
+.pin.sent-pin.my-pin:hover {
+  background-color: rgba(22, 163, 74, 0.9); /* 少し濃い緑 */
 }
 
 /* ピン内のアイコン */

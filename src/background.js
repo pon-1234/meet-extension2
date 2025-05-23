@@ -133,22 +133,28 @@ function startDbListener(meetingId) {
         return;
     }
     console.log(`BG: Starting DB listener for ${meetingId}`);
+    
+    // 全体向けピン
     const pinsRef = ref(database, `meetings/${meetingId}/pins`);
+    // 自分宛ての個別ピン
+    const directPinsRef = ref(database, `meetings/${meetingId}/directPins/${currentUser.uid}`);
+    
     const listeners = {};
 
     try {
-        listeners.added = onChildAdded(pinsRef, (snapshot) => {
+        // 全体向けピンのリスナー
+        listeners.pinsAdded = onChildAdded(pinsRef, (snapshot) => {
             const pinId = snapshot.key;
             const pin = snapshot.val();
             notifyPinUpdateToContentScripts(meetingId, 'pinAdded', { pinId, pin });
 
             // --- デスクトップ通知作成処理 ---
             if (pin && pin.createdBy && currentUser && pin.createdBy.uid !== currentUser.uid) {
-                const pinDef = PING_DEFINITIONS[pin.type] || { label: pin.type, icon: 'icons/icon48.png' }; // デフォルトアイコン
-                let iconUrl = chrome.runtime.getURL(pinDef.icon); // manifestのweb_accessible_resourcesのパスに合わせる
+                const pinDef = PING_DEFINITIONS[pin.type] || { label: pin.type, icon: 'icons/icon48.png' };
+                let iconUrl = chrome.runtime.getURL(pinDef.icon);
 
                 chrome.notifications.create(
-                    `pin-${meetingId}-${pinId}`, // 通知ID
+                    `pin-${meetingId}-${pinId}`,
                     {
                         type: 'basic',
                         iconUrl: iconUrl,
@@ -166,25 +172,75 @@ function startDbListener(meetingId) {
             // --- 通知作成処理ここまで ---
 
         }, (error) => {
-            console.error(`BG: DB listener error (child_added) for ${meetingId}:`, error);
+            console.error(`BG: DB listener error (pins child_added) for ${meetingId}:`, error);
             if (error.code === 'PERMISSION_DENIED') notifyPermissionErrorToContentScripts(meetingId);
             stopDbListener(meetingId);
         });
 
-        listeners.removed = onChildRemoved(pinsRef, (snapshot) => {
+        listeners.pinsRemoved = onChildRemoved(pinsRef, (snapshot) => {
             const pinId = snapshot.key;
             notifyPinUpdateToContentScripts(meetingId, 'pinRemoved', { pinId });
-            // 対応する通知があれば削除 (オプション)
             chrome.notifications.clear(`pin-${meetingId}-${pinId}`, (wasCleared) => {
                 if (chrome.runtime.lastError) { /* console.warn('Error clearing notification:', chrome.runtime.lastError.message); */ }
             });
         }, (error) => {
-            console.error(`BG: DB listener error (child_removed) for ${meetingId}:`, error);
+            console.error(`BG: DB listener error (pins child_removed) for ${meetingId}:`, error);
             if (error.code === 'PERMISSION_DENIED') notifyPermissionErrorToContentScripts(meetingId);
             stopDbListener(meetingId);
         });
 
-        activeListeners[meetingId] = { ref: pinsRef, listeners: listeners };
+        // 個別ピンのリスナー
+        listeners.directPinsAdded = onChildAdded(directPinsRef, (snapshot) => {
+            const pinId = snapshot.key;
+            const pin = snapshot.val();
+            // 個別ピンとしてマーク
+            pin.isDirect = true;
+            notifyPinUpdateToContentScripts(meetingId, 'pinAdded', { pinId, pin });
+
+            // --- 個別ピンのデスクトップ通知 ---
+            if (pin && pin.createdBy) {
+                const pinDef = PING_DEFINITIONS[pin.type] || { label: pin.type, icon: 'icons/icon48.png' };
+                let iconUrl = chrome.runtime.getURL(pinDef.icon);
+
+                chrome.notifications.create(
+                    `directpin-${meetingId}-${pinId}`,
+                    {
+                        type: 'basic',
+                        iconUrl: iconUrl,
+                        title: `個別ピン: ${pinDef.label}`,
+                        message: `${pin.createdBy.displayName || pin.createdBy.email.split('@')[0]}さんからの個別ピンです。\n会議: ${meetingId}`,
+                        priority: 2, // 個別ピンは高優先度
+                    },
+                    (notificationId) => {
+                        if (chrome.runtime.lastError) {
+                            console.error('BG: 個別ピン通知作成エラー:', chrome.runtime.lastError.message);
+                        }
+                    }
+                );
+            }
+        }, (error) => {
+            console.error(`BG: DB listener error (directPins child_added) for ${meetingId}:`, error);
+            if (error.code === 'PERMISSION_DENIED') notifyPermissionErrorToContentScripts(meetingId);
+            stopDbListener(meetingId);
+        });
+
+        listeners.directPinsRemoved = onChildRemoved(directPinsRef, (snapshot) => {
+            const pinId = snapshot.key;
+            notifyPinUpdateToContentScripts(meetingId, 'pinRemoved', { pinId });
+            chrome.notifications.clear(`directpin-${meetingId}-${pinId}`, (wasCleared) => {
+                if (chrome.runtime.lastError) { /* console.warn('Error clearing direct pin notification:', chrome.runtime.lastError.message); */ }
+            });
+        }, (error) => {
+            console.error(`BG: DB listener error (directPins child_removed) for ${meetingId}:`, error);
+            if (error.code === 'PERMISSION_DENIED') notifyPermissionErrorToContentScripts(meetingId);
+            stopDbListener(meetingId);
+        });
+
+        activeListeners[meetingId] = { 
+            pinsRef: pinsRef,
+            directPinsRef: directPinsRef,
+            listeners: listeners 
+        };
     } catch (error) {
         console.error(`BG: Failed to attach listeners for ${meetingId}:`, error);
     }
@@ -195,11 +251,17 @@ function stopDbListener(meetingId) {
     if (listenerInfo) {
         console.log(`BG: Stopping DB listener for ${meetingId}`);
         try {
-            if (listenerInfo.listeners.added) {
-                off(listenerInfo.ref, 'child_added', listenerInfo.listeners.added);
+            if (listenerInfo.listeners.pinsAdded) {
+                off(listenerInfo.pinsRef, 'child_added', listenerInfo.listeners.pinsAdded);
             }
-            if (listenerInfo.listeners.removed) {
-                off(listenerInfo.ref, 'child_removed', listenerInfo.listeners.removed);
+            if (listenerInfo.listeners.pinsRemoved) {
+                off(listenerInfo.pinsRef, 'child_removed', listenerInfo.listeners.pinsRemoved);
+            }
+            if (listenerInfo.listeners.directPinsAdded) {
+                off(listenerInfo.directPinsRef, 'child_added', listenerInfo.listeners.directPinsAdded);
+            }
+            if (listenerInfo.listeners.directPinsRemoved) {
+                off(listenerInfo.directPinsRef, 'child_removed', listenerInfo.listeners.directPinsRemoved);
             }
         } catch (offError) {
             handleMessageError(offError, `listener off for ${meetingId}`);
@@ -416,6 +478,56 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: false, error: error.message });
         }
         return;
+      } else if (typeof action === 'string' && action.trim() === 'createDirectPin') {
+        const { meetingId, targetUserId, pinData } = message;
+        if (!meetingId || !targetUserId || !pinData || !pinData.type) {
+          sendResponse({ success: false, error: "必須パラメータ(meetingId, targetUserId, pinData.type)が不足しています" });
+          return;
+        }
+        if (!currentUser) {
+          sendResponse({ success: false, error: "認証されていません" });
+          return;
+        }
+        if (!database) {
+          sendResponse({ success: false, error: "データベースが初期化されていません" });
+          return;
+        }
+        try {
+          // 受信者宛てのピン
+          const directPinsRef = ref(database, `meetings/${meetingId}/directPins/${targetUserId}`);
+          const newPinRef = push(directPinsRef);
+          const pinPayload = {
+            ...pinData,
+            createdBy: {
+               uid: currentUser.uid,
+               displayName: currentUser.displayName,
+               email: currentUser.email
+            },
+            targetUserId: targetUserId,
+            timestamp: serverTimestamp()
+          };
+          await set(newPinRef, pinPayload);
+
+          // 送信者宛てのピンのコピー（送信確認用）
+          const senderPinsRef = ref(database, `meetings/${meetingId}/directPins/${currentUser.uid}`);
+          const senderPinRef = push(senderPinsRef);
+          const senderPinPayload = {
+            ...pinPayload,
+            isSent: true, // 送信したピンであることを示すフラグ
+            originalPinId: newPinRef.key, // 元のピンIDを保存
+            displayTargetName: message.targetDisplayName || 'Unknown User' // 送信先の表示名
+          };
+          await set(senderPinRef, senderPinPayload);
+
+          sendResponse({ success: true, pinId: newPinRef.key, senderPinId: senderPinRef.key });
+        } catch (error) {
+          console.error(`BG: 個別ピン作成エラー (${meetingId} -> ${targetUserId}):`, error);
+          if (error.code === 'PERMISSION_DENIED') {
+            notifyPermissionErrorToContentScripts(meetingId);
+          }
+          sendResponse({ success: false, error: error.message });
+        }
+        return;
       } else if (typeof action === 'string' && action.trim() === 'removePin') {
          const { meetingId, pinId } = message;
           if (!meetingId || !pinId) {
@@ -440,6 +552,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ success: false, error: "データベースからの削除権限がありません。" });
             } else {
                 sendResponse({ success: false, error: `DB削除エラー: ${error.message}` });
+            }
+          }
+      } else if (typeof action === 'string' && action.trim() === 'removeDirectPin') {
+         const { meetingId, pinId, targetUserId } = message;
+          if (!meetingId || !pinId || !targetUserId) {
+            sendResponse({ success: false, error: "必須パラメータ(meetingId, pinId, targetUserId)が不足しています" });
+            return;
+          }
+          if (!currentUser) {
+            sendResponse({ success: false, error: "認証されていません" });
+            return;
+          }
+          if (!database) {
+            sendResponse({ success: false, error: "データベースが初期化されていません" });
+            return;
+          }
+          const directPinRef = ref(database, `meetings/${meetingId}/directPins/${targetUserId}/${pinId}`);
+          try {
+            await remove(directPinRef);
+            sendResponse({ success: true });
+          } catch (error) {
+            console.error(`BG: 個別ピン削除エラー (${meetingId}/${targetUserId}/${pinId}):`, error);
+            if (error.code === 'PERMISSION_DENIED') {
+                sendResponse({ success: false, error: "データベースからの削除権限がありません。" });
+            } else {
+                sendResponse({ success: false, error: `個別ピンDB削除エラー: ${error.message}` });
             }
           }
       } else {

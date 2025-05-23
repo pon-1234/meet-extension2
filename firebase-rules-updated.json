@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "meetings": {
+      "$meetingId": {
+        // 認証済みドメインユーザーに読み取り権限を付与
+        ".read": "auth != null && auth.token.email.endsWith('@rasa-jp.co.jp')",
+        // 会議ノード全体への書き込み権限は削除
+
+        "pins": {
+          "$pinId": {
+            // ピンの作成と、作成者による更新を許可
+            ".write": "auth != null && auth.token.email.endsWith('@rasa-jp.co.jp') && (!data.exists() || data.child('createdBy/uid').val() === auth.uid)",
+            // (推奨) ピンデータの必須フィールドを検証
+            ".validate": "newData.hasChildren(['type', 'createdBy', 'timestamp']) && newData.child('createdBy').hasChildren(['uid', 'email'])"
+          }
+        },
+
+        "directPins": {
+          "$userId": {
+            // 自分宛てのピンのみ読み取り可能（同じドメインユーザー）
+            ".read": "auth != null && auth.token.email.endsWith('@rasa-jp.co.jp') && auth.uid == $userId",
+            
+            "$pinId": {
+              // 個別ピンの作成と更新を許可（送信者または受信者のみ）
+              ".write": "auth != null && auth.token.email.endsWith('@rasa-jp.co.jp') && (auth.uid == $userId || (!data.exists() && newData.child('createdBy/uid').val() === auth.uid))",
+              // 個別ピンデータの必須フィールドを検証
+              ".validate": "newData.hasChildren(['type', 'createdBy', 'timestamp', 'targetUserId']) && newData.child('createdBy').hasChildren(['uid', 'email']) && newData.child('targetUserId').val() == $userId"
+            }
+          }
+        }
+      }
+    }
+  }
+} 
