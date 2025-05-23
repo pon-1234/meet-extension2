@@ -344,7 +344,7 @@ function setupUI() {
   participantsBackButton.addEventListener('click', (event) => {
     event.stopPropagation();
     showMainMenu();
-  });
+    });
   participantsMenu.appendChild(participantsBackButton);
 
   container.appendChild(participantsMenu);
@@ -416,7 +416,7 @@ function closePingMenu() {
     if (pingMenu) pingMenu.classList.add('hidden');
     if (pingOptionsMenu) pingOptionsMenu.classList.add('hidden');
     if (participantsMenu) participantsMenu.classList.add('hidden');
-}
+    }
 
 function showMainMenu() {
     const pingMenu = document.getElementById('ping-menu');
