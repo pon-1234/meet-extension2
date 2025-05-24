@@ -5,7 +5,8 @@ let currentUser = null;
 let currentMeetingId = null; // 現在のページの会議ID
 let userPins = {}; // { pinId: { element: ..., timeoutId: ... } } // timeoutId を追加
 let currentUrl = location.href; // 現在のURLを保持
-let currentPingMode = 'everyone'; // 'everyone' または 'individual'
+let selectedTarget = 'everyone'; // デフォルトは全員
+let selectedParticipant = null; // 選択された参加者情報
 let meetParticipants = {}; // 参加者のリスト { uid: { displayName, email } }
 let participantsObserver = null; // 参加者変更監視用
 let participantsUpdateInterval = null; // 参加者更新インターバル
@@ -176,6 +177,24 @@ function setupUI() {
   const container = document.createElement('div');
   container.id = 'ping-container';
 
+  // 送信先セレクター（ドロップダウン）を作成
+  const targetSelector = document.createElement('div');
+  targetSelector.id = 'ping-target-selector';
+  
+  const selectorButton = document.createElement('button');
+  selectorButton.id = 'ping-selector-button';
+  selectorButton.innerHTML = '<span id="selector-text">全員</span><span class="selector-arrow">▼</span>';
+  selectorButton.addEventListener('click', toggleTargetDropdown);
+  
+  const dropdownList = document.createElement('div');
+  dropdownList.id = 'ping-dropdown-list';
+  dropdownList.classList.add('hidden');
+  
+  targetSelector.appendChild(selectorButton);
+  targetSelector.appendChild(dropdownList);
+  container.appendChild(targetSelector);
+
+  // ピンメニューボタン
   const pingButton = document.createElement('button');
   pingButton.id = 'ping-menu-button';
   const menuButtonIcon = document.createElement('img');
@@ -186,7 +205,7 @@ function setupUI() {
   pingButton.addEventListener('click', togglePingMenu);
   container.appendChild(pingButton);
 
-  // メインメニュー（全体/個別選択）
+  // ピンオプションメニュー
   const pingMenu = document.createElement('div');
   pingMenu.id = 'ping-menu';
   pingMenu.classList.add('hidden');
@@ -206,83 +225,6 @@ function setupUI() {
     closePingMenu();
   });
   pingMenu.appendChild(pingCenter);
-
-  // 全体向けオプション
-  const everyoneOption = document.createElement('div');
-  everyoneOption.className = 'ping-mode-option';
-  everyoneOption.dataset.mode = 'everyone';
-  everyoneOption.style.position = 'absolute';
-  everyoneOption.style.top = '50%';
-  everyoneOption.style.left = '50%';
-  everyoneOption.style.transform = 'translate(calc(-50% + 0px), calc(-50% + -70px))'; // 上
-  
-  const everyoneIcon = document.createElement('div');
-  everyoneIcon.className = 'ping-text-icon';
-  everyoneIcon.textContent = '全';
-  everyoneOption.appendChild(everyoneIcon);
-
-  const everyoneTooltip = document.createElement('span');
-  everyoneTooltip.className = 'ping-option-tooltip';
-  everyoneTooltip.textContent = '全体';
-  everyoneOption.appendChild(everyoneTooltip);
-
-  everyoneOption.addEventListener('click', (event) => {
-    event.stopPropagation();
-    currentPingMode = 'everyone';
-    showPingOptions();
-  });
-  pingMenu.appendChild(everyoneOption);
-
-  // 個別向けオプション
-  const individualOption = document.createElement('div');
-  individualOption.className = 'ping-mode-option';
-  individualOption.dataset.mode = 'individual';
-  individualOption.style.position = 'absolute';
-  individualOption.style.top = '50%';
-  individualOption.style.left = '50%';
-  individualOption.style.transform = 'translate(calc(-50% + 0px), calc(-50% + 70px))'; // 下
-
-  const individualIcon = document.createElement('div');
-  individualIcon.className = 'ping-text-icon';
-  individualIcon.textContent = '個';
-  individualOption.appendChild(individualIcon);
-
-  const individualTooltip = document.createElement('span');
-  individualTooltip.className = 'ping-option-tooltip';
-  individualTooltip.textContent = '個別';
-  individualOption.appendChild(individualTooltip);
-
-  individualOption.addEventListener('click', (event) => {
-    event.stopPropagation();
-    currentPingMode = 'individual';
-    showParticipantsList();
-  });
-  pingMenu.appendChild(individualOption);
-
-  container.appendChild(pingMenu);
-
-  // ピンオプションメニュー（サブメニュー）
-  const pingOptionsMenu = document.createElement('div');
-  pingOptionsMenu.id = 'ping-options-menu';
-  pingOptionsMenu.classList.add('hidden');
-  
-  // 戻るボタン
-  const backButton = document.createElement('div');
-  backButton.id = 'ping-back-button';
-  backButton.style.position = 'absolute';
-  backButton.style.top = '50%';
-  backButton.style.left = '50%';
-  backButton.style.transform = 'translate(-50%, -50%)';
-  const backIcon = document.createElement('div');
-  backIcon.className = 'ping-text-icon';
-  backIcon.textContent = '←';
-  backButton.appendChild(backIcon);
-  backButton.title = '戻る';
-  backButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    showMainMenu();
-  });
-  pingOptionsMenu.appendChild(backButton);
 
   // ピンオプションを追加
   Object.keys(PING_DEFINITIONS).forEach(key => {
@@ -321,33 +263,9 @@ function setupUI() {
       event.stopPropagation();
       handlePingSelection(key, pingInfo);
     });
-    pingOptionsMenu.appendChild(option);
+    pingMenu.appendChild(option);
   });
-  container.appendChild(pingOptionsMenu);
-
-  // 参加者リストメニュー
-  const participantsMenu = document.createElement('div');
-  participantsMenu.id = 'ping-participants-menu';
-  participantsMenu.classList.add('hidden');
-  
-  const participantsBackButton = document.createElement('div');
-  participantsBackButton.id = 'participants-back-button';
-  participantsBackButton.style.position = 'absolute';
-  participantsBackButton.style.top = '50%';
-  participantsBackButton.style.left = '50%';
-  participantsBackButton.style.transform = 'translate(-50%, -50%)';
-  const participantsBackIcon = document.createElement('div');
-  participantsBackIcon.className = 'ping-text-icon';
-  participantsBackIcon.textContent = '←';
-  participantsBackButton.appendChild(participantsBackIcon);
-  participantsBackButton.title = '戻る';
-  participantsBackButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    showMainMenu();
-    });
-  participantsMenu.appendChild(participantsBackButton);
-
-  container.appendChild(participantsMenu);
+  container.appendChild(pingMenu);
 
   const pinsArea = document.createElement('div');
   pinsArea.id = 'pins-area';
@@ -360,6 +278,9 @@ function setupUI() {
   } else {
     console.error("CS: setupUI: document.body not found.");
   }
+  
+  // 初回の参加者リスト更新
+  updateTargetDropdown();
 }
 
 function cleanupUI() {
@@ -389,10 +310,99 @@ function cleanupUI() {
 function handleDocumentClickForMenu(event) {
     const menu = document.getElementById('ping-menu');
     const button = document.getElementById('ping-menu-button');
+    const dropdown = document.getElementById('ping-dropdown-list');
+    const selectorButton = document.getElementById('ping-selector-button');
+    
+    // ピンメニューの外側クリック判定
     if (menu && !menu.classList.contains('hidden')) {
         if (!menu.contains(event.target) && (!button || !button.contains(event.target))) {
              menu.classList.add('hidden');
         }
+    }
+    
+    // ドロップダウンの外側クリック判定
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        if (!dropdown.contains(event.target) && (!selectorButton || !selectorButton.contains(event.target))) {
+            dropdown.classList.add('hidden');
+        }
+    }
+}
+
+function toggleTargetDropdown(event) {
+    event.stopPropagation();
+    const dropdown = document.getElementById('ping-dropdown-list');
+    if (dropdown) {
+        if (dropdown.classList.contains('hidden')) {
+            updateTargetDropdown();
+            dropdown.classList.remove('hidden');
+        } else {
+            dropdown.classList.add('hidden');
+        }
+    }
+}
+
+function updateTargetDropdown() {
+    const dropdown = document.getElementById('ping-dropdown-list');
+    if (!dropdown) return;
+    
+    // 既存の項目をクリア
+    dropdown.innerHTML = '';
+    
+    // 「全員」オプションを追加
+    const everyoneOption = document.createElement('div');
+    everyoneOption.className = 'dropdown-item';
+    everyoneOption.textContent = '全員';
+    everyoneOption.addEventListener('click', () => selectTarget('everyone', null));
+    dropdown.appendChild(everyoneOption);
+    
+    // セパレーター
+    const separator = document.createElement('div');
+    separator.className = 'dropdown-separator';
+    dropdown.appendChild(separator);
+    
+    // 参加者リストを追加
+    const participants = Object.values(meetParticipants).filter(participant => 
+        participant.uid !== currentUser?.uid // 自分は除外
+    );
+    
+    if (participants.length === 0) {
+        // デモ用の参加者を表示
+        const demoParticipants = [
+            { uid: 'demo-user-1', displayName: 'デモユーザー1', email: 'demo1@example.com' },
+            { uid: 'demo-user-2', displayName: 'デモユーザー2', email: 'demo2@example.com' }
+        ];
+        demoParticipants.forEach(participant => {
+            const item = document.createElement('div');
+            item.className = 'dropdown-item';
+            item.textContent = participant.displayName;
+            item.addEventListener('click', () => selectTarget('individual', participant));
+            dropdown.appendChild(item);
+        });
+    } else {
+        participants.forEach(participant => {
+            const item = document.createElement('div');
+            item.className = 'dropdown-item';
+            item.textContent = participant.displayName;
+            item.addEventListener('click', () => selectTarget('individual', participant));
+            dropdown.appendChild(item);
+        });
+    }
+}
+
+function selectTarget(mode, participant) {
+    selectedTarget = mode;
+    selectedParticipant = participant;
+    
+    // セレクターのテキストを更新
+    const selectorText = document.getElementById('selector-text');
+    if (selectorText) {
+        selectorText.textContent = mode === 'everyone' ? '全員' : participant.displayName;
+    }
+    
+    // ドロップダウンを閉じる
+    const dropdown = document.getElementById('ping-dropdown-list');
+    if (dropdown) {
+        dropdown.classList.add('hidden');
     }
 }
 
@@ -401,7 +411,7 @@ function togglePingMenu(event) {
     const pingMenu = document.getElementById('ping-menu');
     if (pingMenu) {
         if (pingMenu.classList.contains('hidden')) {
-            showMainMenu();
+            pingMenu.classList.remove('hidden');
         } else {
             closePingMenu();
         }
@@ -410,51 +420,13 @@ function togglePingMenu(event) {
 
 function closePingMenu() {
     const pingMenu = document.getElementById('ping-menu');
-    const pingOptionsMenu = document.getElementById('ping-options-menu');
-    const participantsMenu = document.getElementById('ping-participants-menu');
-    
     if (pingMenu) pingMenu.classList.add('hidden');
-    if (pingOptionsMenu) pingOptionsMenu.classList.add('hidden');
-    if (participantsMenu) participantsMenu.classList.add('hidden');
-    }
-
-function showMainMenu() {
-    const pingMenu = document.getElementById('ping-menu');
-    const pingOptionsMenu = document.getElementById('ping-options-menu');
-    const participantsMenu = document.getElementById('ping-participants-menu');
-    
-    if (pingMenu) pingMenu.classList.remove('hidden');
-    if (pingOptionsMenu) pingOptionsMenu.classList.add('hidden');
-    if (participantsMenu) participantsMenu.classList.add('hidden');
-}
-
-function showPingOptions() {
-    const pingMenu = document.getElementById('ping-menu');
-    const pingOptionsMenu = document.getElementById('ping-options-menu');
-    const participantsMenu = document.getElementById('ping-participants-menu');
-    
-    if (pingMenu) pingMenu.classList.add('hidden');
-    if (pingOptionsMenu) pingOptionsMenu.classList.remove('hidden');
-    if (participantsMenu) participantsMenu.classList.add('hidden');
-}
-
-function showParticipantsList() {
-    // 参加者リストを更新
-    updateParticipantsList();
-    
-    const pingMenu = document.getElementById('ping-menu');
-    const pingOptionsMenu = document.getElementById('ping-options-menu');
-    const participantsMenu = document.getElementById('ping-participants-menu');
-    
-    if (pingMenu) pingMenu.classList.add('hidden');
-    if (pingOptionsMenu) pingOptionsMenu.classList.add('hidden');
-    if (participantsMenu) participantsMenu.classList.remove('hidden');
 }
 
 function handlePingSelection(pingType, pingInfo) {
     closePingMenu();
     
-    if (currentPingMode === 'everyone') {
+    if (selectedTarget === 'everyone') {
         // 全体向けピン
         chrome.runtime.sendMessage({
             action: 'createPin',
@@ -473,105 +445,28 @@ function handlePingSelection(pingType, pingInfo) {
             handleMessageError(error, 'background', 'createPin');
             showMessage("エラー: ピンの作成依頼に失敗しました。", true);
         });
-    } else if (currentPingMode === 'individual') {
-        // 個別向けピン - 対象ユーザーが選択されている場合
-        if (window.selectedParticipant) {
-            chrome.runtime.sendMessage({
-                action: 'createDirectPin',
-                meetingId: currentMeetingId,
-                targetUserId: window.selectedParticipant.uid,
-                targetDisplayName: window.selectedParticipant.displayName,
-                pinData: { type: pingType }
-            })
-            .then(response => {
-                if (response?.success) {
-                    showMessage(`ピン「${pingInfo.label}」を${window.selectedParticipant.displayName}に送信しました`);
-                } else {
-                    console.error("CS: Failed to create direct pin:", response?.error);
-                    showMessage(`エラー: 個別ピンを作成できませんでした (${response?.error || '不明なエラー'})`, true);
-                }
-            })
-            .catch(error => {
-                handleMessageError(error, 'background', 'createDirectPin');
-                showMessage("エラー: 個別ピンの作成依頼に失敗しました。", true);
-            });
-        } else {
-            showMessage("エラー: 送信先が選択されていません。", true);
-        }
-    }
-}
-
-function updateParticipantsList() {
-    const participantsMenu = document.getElementById('ping-participants-menu');
-    if (!participantsMenu) return;
-
-    // 既存の参加者オプションを削除（戻るボタンは残す）
-    const existingOptions = participantsMenu.querySelectorAll('.participant-option');
-    existingOptions.forEach(option => option.remove());
-
-    // 実際の参加者データを使用
-    const participants = Object.values(meetParticipants).filter(participant => 
-        participant.uid !== currentUser?.uid // 自分は除外
-    );
-    
-    if (participants.length === 0) {
-        console.log('CS: 利用可能な参加者がいません。ダミーデータを使用します。');
-        // 参加者がいない場合はダミーデータを表示
-        const dummyParticipants = [
-            {
-                uid: 'demo-user-1',
-                displayName: 'デモユーザー1',
-                email: 'demo1@example.com'
-            },
-            {
-                uid: 'demo-user-2',
-                displayName: 'デモユーザー2',
-                email: 'demo2@example.com'
+    } else if (selectedTarget === 'individual' && selectedParticipant) {
+        // 個別向けピン
+        chrome.runtime.sendMessage({
+            action: 'createDirectPin',
+            meetingId: currentMeetingId,
+            targetUserId: selectedParticipant.uid,
+            targetDisplayName: selectedParticipant.displayName,
+            pinData: { type: pingType }
+        })
+        .then(response => {
+            if (response?.success) {
+                showMessage(`ピン「${pingInfo.label}」を${selectedParticipant.displayName}に送信しました`);
+            } else {
+                console.error("CS: Failed to create direct pin:", response?.error);
+                showMessage(`エラー: 個別ピンを作成できませんでした (${response?.error || '不明なエラー'})`, true);
             }
-        ];
-        dummyParticipants.forEach((participant, index) => addParticipantOption(participant, index, participantsMenu));
-    } else {
-        // 実際の参加者を追加
-        participants.forEach((participant, index) => addParticipantOption(participant, index, participantsMenu));
+        })
+        .catch(error => {
+            handleMessageError(error, 'background', 'createDirectPin');
+            showMessage("エラー: 個別ピンの作成依頼に失敗しました。", true);
+        });
     }
-}
-
-function addParticipantOption(participant, index, participantsMenu) {
-    const option = document.createElement('div');
-    option.className = 'participant-option';
-    option.dataset.uid = participant.uid;
-    
-    // 円周上に配置（最大8人まで）
-    const angle = (index * 45) - 90; // -90度から開始して45度ずつ
-    const distance = 70;
-    const angleRad = angle * (Math.PI / 180);
-    const x = Math.cos(angleRad) * distance;
-    const y = Math.sin(angleRad) * distance;
-    
-    option.style.position = 'absolute';
-    option.style.top = '50%';
-    option.style.left = '50%';
-    option.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
-
-    const iconDiv = document.createElement('div');
-    iconDiv.className = 'ping-text-icon';
-    // 名前の頭文字を取得（日本語の場合は最初の1文字、英語の場合は最初の1文字）
-    const firstChar = participant.displayName.charAt(0).toUpperCase();
-    iconDiv.textContent = firstChar;
-    option.appendChild(iconDiv);
-
-    const tooltipSpan = document.createElement('span');
-    tooltipSpan.className = 'ping-option-tooltip';
-    tooltipSpan.textContent = participant.displayName;
-    option.appendChild(tooltipSpan);
-
-    option.addEventListener('click', (event) => {
-        event.stopPropagation();
-        window.selectedParticipant = participant;
-        showPingOptions();
-    });
-
-    participantsMenu.appendChild(option);
 }
 
 function extractParticipantsFromDOM() {
@@ -1001,10 +896,10 @@ function updateMeetParticipants() {
             meetParticipants[participant.uid] = participant;
         });
         
-        // 個別ピンメニューが表示されている場合は更新
-        const participantsMenu = document.getElementById('ping-participants-menu');
-        if (participantsMenu && !participantsMenu.classList.contains('hidden')) {
-            updateParticipantsList();
+        // ドロップダウンが開いている場合は更新
+        const dropdown = document.getElementById('ping-dropdown-list');
+        if (dropdown && !dropdown.classList.contains('hidden')) {
+            updateTargetDropdown();
         }
     }
 }
@@ -1016,4 +911,4 @@ if (document.readyState === 'loading') {
     initializeContentScript();
 }
 
-console.log('Meet Ping Extension content script loaded and initialized (with auto-remove pins).');
+console.log('Meet Ping Extension content script loaded and initialized (with dropdown selector).');
