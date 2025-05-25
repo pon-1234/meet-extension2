@@ -367,6 +367,7 @@ function updateTargetDropdown() {
             return false;
         }
         
+        
         // 自分を除外（複数の方法でチェック）
         // 1. currentUserのdisplayNameと比較
         if (currentUser?.displayName) {
@@ -386,16 +387,39 @@ function updateTargetDropdown() {
             }
         }
         
+        // 6. 自分の名前が参加者名に含まれているかチェック（特定のパターンのみ）
+        if (currentUser?.displayName) {
+            const myNameBase = currentUser.displayName.replace(/さん$/, '');
+            const participantNameBase = participant.displayName.replace(/さん$/, '');
+            
+            // 特定のパターンのみ除外（自分の名前+自分の名前、または自分の名前+さん+自分の名前）
+            const duplicatePattern1 = myNameBase + myNameBase; // "ponpon"
+            const duplicatePattern2 = myNameBase + 'さん' + myNameBase; // "ponさんpon"
+            
+            if (participantNameBase.toLowerCase() === duplicatePattern1.toLowerCase() ||
+                participantNameBase.toLowerCase() === duplicatePattern2.toLowerCase()) {
+                return false;
+            }
+        }
+        
         // 3. participant.isMe フラグがある場合
         if (participant.isMe) {
+            return false;
+        }
+        
+        // 4. currentUserのuidと比較（追加）
+        if (currentUser?.uid && participant.uid && currentUser.uid === participant.uid) {
+            return false;
+        }
+        
+        // 5. emailの完全一致チェック（追加）
+        if (currentUser?.email && participant.email && currentUser.email === participant.email) {
             return false;
         }
         
         return true;
     });
     
-    console.log('CS: updateTargetDropdown - participants:', participants);
-    console.log('CS: updateTargetDropdown - meetParticipants:', meetParticipants);
     
     if (participants.length === 0) {
         // 参加者がいない場合の処理
