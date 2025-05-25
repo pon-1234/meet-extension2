@@ -291,26 +291,26 @@
 
 /* 個別ピンのスタイル */
 .pin.direct-pin {
-  background-color: rgba(59, 130, 246, 0.85); /* 青系の背景色 */
-  border: 2px solid rgba(59, 130, 246, 0.5); /* 青系のボーダー */
+  background-color: rgba(37, 99, 235, 0.85); /* 青系の背景色（暗めに調整） */
+  border: 2px solid rgba(37, 99, 235, 0.5); /* 青系のボーダー（暗めに調整） */
 }
 .pin.direct-pin:hover {
-  background-color: rgba(59, 130, 246, 0.95);
+  background-color: rgba(37, 99, 235, 0.95);
 }
 .pin.direct-pin.my-pin:hover {
-  background-color: rgba(37, 99, 235, 0.9); /* 少し濃い青 */
+  background-color: rgba(29, 78, 216, 0.9); /* さらに濃い青 */
 }
 
 /* 送信した個別ピンのスタイル */
 .pin.sent-pin {
-  background-color: rgba(34, 197, 94, 0.85); /* 緑系の背景色 */
-  border: 2px solid rgba(34, 197, 94, 0.5); /* 緑系のボーダー */
+  background-color: rgba(22, 163, 74, 0.85); /* 緑系の背景色（暗めに調整） */
+  border: 2px solid rgba(22, 163, 74, 0.5); /* 緑系のボーダー（暗めに調整） */
 }
 .pin.sent-pin:hover {
-  background-color: rgba(34, 197, 94, 0.95);
+  background-color: rgba(22, 163, 74, 0.95);
 }
 .pin.sent-pin.my-pin:hover {
-  background-color: rgba(22, 163, 74, 0.9); /* 少し濃い緑 */
+  background-color: rgba(21, 128, 61, 0.9); /* さらに濃い緑 */
 }
 
 /* ピン内のアイコン */

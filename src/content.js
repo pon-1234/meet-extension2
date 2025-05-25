@@ -362,27 +362,30 @@ function updateTargetDropdown() {
     
     // 参加者リストを追加
     const participants = Object.values(meetParticipants).filter(participant => 
-        participant.uid !== currentUser?.uid // 自分は除外
+        participant.uid !== currentUser?.uid && // 自分は除外
+        participant.displayName && // displayNameが存在することを確認
+        participant.displayName.trim() !== '' // 空文字でないことを確認
     );
     
+    console.log('CS: updateTargetDropdown - participants:', participants);
+    console.log('CS: updateTargetDropdown - meetParticipants:', meetParticipants);
+    
     if (participants.length === 0) {
-        // デモ用の参加者を表示
-        const demoParticipants = [
-            { uid: 'demo-user-1', displayName: 'デモユーザー1', email: 'demo1@example.com' },
-            { uid: 'demo-user-2', displayName: 'デモユーザー2', email: 'demo2@example.com' }
-        ];
-        demoParticipants.forEach(participant => {
-            const item = document.createElement('div');
-            item.className = 'dropdown-item';
-            item.textContent = participant.displayName;
-            item.addEventListener('click', () => selectTarget('individual', participant));
-            dropdown.appendChild(item);
-        });
+        // 参加者がいない場合の処理
+        // デモユーザーを表示するか、メッセージを表示
+        const noParticipantMessage = document.createElement('div');
+        noParticipantMessage.className = 'dropdown-item';
+        noParticipantMessage.textContent = '他の参加者がいません';
+        noParticipantMessage.style.opacity = '0.6';
+        noParticipantMessage.style.cursor = 'default';
+        dropdown.appendChild(noParticipantMessage);
     } else {
         participants.forEach(participant => {
             const item = document.createElement('div');
             item.className = 'dropdown-item';
-            item.textContent = participant.displayName;
+            // displayNameが正しく設定されているか確認
+            const displayName = participant.displayName || '不明な参加者';
+            item.textContent = displayName;
             item.addEventListener('click', () => selectTarget('individual', participant));
             dropdown.appendChild(item);
         });
@@ -475,32 +478,76 @@ function extractParticipantsFromDOM() {
     try {
         // Google Meetの参加者情報を取得する複数の方法を試行
         
-        // 方法1: 参加者パネルが開いている場合
+        // 方法1: 参加者パネルが開いている場合（data-participant-id要素から取得）
         const participantItems = document.querySelectorAll('[data-participant-id]');
+        console.log('CS: 方法1 - data-participant-id要素数:', participantItems.length);
         if (participantItems.length > 0) {
             participantItems.forEach(item => {
-                const nameElement = item.querySelector('[data-self-name], [jsname="YbZvtf"], .z5xWsc');
+                // より正確なセレクターで名前を取得
+                const nameElement = item.querySelector('.zWGUib');
+                const ariaLabel = item.getAttribute('aria-label');
+                
                 if (nameElement) {
                     const displayName = nameElement.textContent.trim();
-                    if (displayName && displayName !== '') {
-                        participants.push({
-                            uid: generateParticipantId(displayName),
-                            displayName: displayName,
-                            email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
-                        });
+                    console.log('CS: 方法1で検出した名前 (zWGUib):', displayName);
+                    
+                    // 無効な名前をフィルタリング
+                    if (displayName && 
+                        displayName !== '' && 
+                        displayName !== 'devices' && 
+                        displayName !== 'peoplepeople' &&
+                        !displayName.includes('（あなた）')) { // 自分を除外
+                        
+                        // すでに追加されていないか確認
+                        const existingParticipant = participants.find(p => p.displayName === displayName);
+                        if (!existingParticipant) {
+                            participants.push({
+                                uid: generateParticipantId(displayName),
+                                displayName: displayName,
+                                email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
+                            });
+                        }
+                    }
+                } else if (ariaLabel) {
+                    // aria-labelから名前を取得（フォールバック）
+                    console.log('CS: 方法1で検出したaria-label:', ariaLabel);
+                    const displayName = ariaLabel.trim();
+                    if (displayName && 
+                        displayName !== '' && 
+                        displayName !== 'devices' && 
+                        displayName !== 'peoplepeople' &&
+                        !displayName.includes('（あなた）')) {
+                        
+                        const existingParticipant = participants.find(p => p.displayName === displayName);
+                        if (!existingParticipant) {
+                            participants.push({
+                                uid: generateParticipantId(displayName),
+                                displayName: displayName,
+                                email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
+                            });
+                        }
                     }
                 }
             });
         }
         
-        // 方法2: ビデオタイルから名前を抽出
+        // 方法2: ビデオタイルから名前を抽出（方法1で取得できなかった場合）
         if (participants.length === 0) {
             const videoTiles = document.querySelectorAll('[data-ssrc], [jsname="A5il2e"], .ZWQeQ, .MuzmKe');
+            console.log('CS: 方法2 - ビデオタイル要素数:', videoTiles.length);
             videoTiles.forEach(tile => {
-                const nameElements = tile.querySelectorAll('.zWGUib, .EuSOXe, .NpwXQ, [data-self-name]');
+                const nameElements = tile.querySelectorAll('.zWGUib, .EuSOXe, .NpwXQ');
                 nameElements.forEach(nameEl => {
                     const displayName = nameEl.textContent.trim();
-                    if (displayName && displayName !== '' && displayName !== '自分' && !displayName.includes('ミュート')) {
+                    console.log('CS: 方法2で検出した名前:', displayName);
+                    if (displayName && 
+                        displayName !== '' && 
+                        displayName !== '自分' && 
+                        displayName !== 'devices' &&
+                        displayName !== 'peoplepeople' &&
+                        !displayName.includes('ミュート') &&
+                        !displayName.includes('（あなた）')) {
+                        
                         const existingParticipant = participants.find(p => p.displayName === displayName);
                         if (!existingParticipant) {
                             participants.push({
@@ -514,57 +561,13 @@ function extractParticipantsFromDOM() {
             });
         }
         
-        // 方法3: より広範囲な名前要素の検索
-        if (participants.length === 0) {
-            const allNameElements = document.querySelectorAll(
-                '.z5xWsc, .ZWQeQ, .zWGUib, .EuSOXe, .NpwXQ, [data-self-name], ' +
-                '[aria-label*="ユーザー"], [title*="ユーザー"], ' +
-                '.uGOf1d, .NpwXQ, .JvZxJe'
-            );
-            
-            allNameElements.forEach(nameEl => {
-                const displayName = nameEl.textContent.trim();
-                if (displayName && 
-                    displayName !== '' && 
-                    displayName !== '自分' && 
-                    !displayName.includes('ミュート') &&
-                    !displayName.includes('カメラ') &&
-                    !displayName.includes('マイク') &&
-                    displayName.length > 1) {
-                    
-                    const existingParticipant = participants.find(p => p.displayName === displayName);
-                    if (!existingParticipant) {
-                        participants.push({
-                            uid: generateParticipantId(displayName),
-                            displayName: displayName,
-                            email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
-                        });
-                    }
-                }
-            });
-        }
-        
-        console.log('CS: 検出された参加者:', participants);
+        console.log('CS: 最終的に検出された参加者:', participants);
         
     } catch (error) {
         console.error('CS: 参加者検出エラー:', error);
     }
     
-    // 少なくとも現在のユーザー以外の参加者がいない場合はダミーデータを返す
-    if (participants.length === 0) {
-        console.log('CS: 参加者を検出できませんでした。ダミーデータを使用します。');
-        participants.push({
-            uid: 'demo-user-1',
-            displayName: 'デモユーザー1',
-            email: 'demo1@example.com'
-        });
-        participants.push({
-            uid: 'demo-user-2',
-            displayName: 'デモユーザー2', 
-            email: 'demo2@example.com'
-        });
-    }
-    
+    // 参加者がいない場合は空の配列を返す
     return participants;
 }
 
