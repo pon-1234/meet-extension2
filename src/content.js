@@ -361,11 +361,38 @@ function updateTargetDropdown() {
     dropdown.appendChild(separator);
     
     // 参加者リストを追加
-    const participants = Object.values(meetParticipants).filter(participant => 
-        participant.uid !== currentUser?.uid && // 自分は除外
-        participant.displayName && // displayNameが存在することを確認
-        participant.displayName.trim() !== '' // 空文字でないことを確認
-    );
+    const participants = Object.values(meetParticipants).filter(participant => {
+        // displayNameが存在することを確認
+        if (!participant.displayName || participant.displayName.trim() === '') {
+            return false;
+        }
+        
+        // 自分を除外（複数の方法でチェック）
+        // 1. currentUserのdisplayNameと比較
+        if (currentUser?.displayName) {
+            const myName = currentUser.displayName.replace(/さん$/, '');
+            const participantName = participant.displayName.replace(/さん$/, '');
+            if (myName === participantName) {
+                return false;
+            }
+        }
+        
+        // 2. currentUserのemailから名前を推測して比較
+        if (currentUser?.email) {
+            const emailName = currentUser.email.split('@')[0];
+            const participantName = participant.displayName.replace(/さん$/, '').toLowerCase();
+            if (emailName.toLowerCase() === participantName) {
+                return false;
+            }
+        }
+        
+        // 3. participant.isMe フラグがある場合
+        if (participant.isMe) {
+            return false;
+        }
+        
+        return true;
+    });
     
     console.log('CS: updateTargetDropdown - participants:', participants);
     console.log('CS: updateTargetDropdown - meetParticipants:', meetParticipants);
@@ -474,92 +501,227 @@ function handlePingSelection(pingType, pingInfo) {
 
 function extractParticipantsFromDOM() {
     const participants = [];
+    const foundNames = new Set(); // 重複を防ぐためのセット
     
     try {
-        // Google Meetの参加者情報を取得する複数の方法を試行
+        // 自分の表示名を取得（複数の方法で）
+        let myDisplayNames = [];
         
-        // 方法1: 参加者パネルが開いている場合（data-participant-id要素から取得）
-        const participantItems = document.querySelectorAll('[data-participant-id]');
-        console.log('CS: 方法1 - data-participant-id要素数:', participantItems.length);
+        // currentUserから自分の名前を取得
+        if (currentUser) {
+            if (currentUser.displayName) {
+                myDisplayNames.push(currentUser.displayName);
+                // 「さん」を除いたバージョンも追加
+                myDisplayNames.push(currentUser.displayName.replace(/さん$/, ''));
+            }
+            if (currentUser.email) {
+                // メールアドレスの@前の部分も名前として使われることがある
+                const emailName = currentUser.email.split('@')[0];
+                myDisplayNames.push(emailName);
+            }
+        }
+        
+        // 「（あなた）」を含む要素から自分の名前を検出
+        const myNameElements = document.querySelectorAll('.NnTWjc');
+        myNameElements.forEach(el => {
+            if (el.textContent.includes('（あなた）')) {
+                const parentEl = el.closest('[data-participant-id]');
+                if (parentEl) {
+                    const nameEl = parentEl.querySelector('.zWGUib');
+                    if (nameEl) {
+                        const myName = nameEl.textContent.trim().replace('さん', '');
+                        if (myName && !myDisplayNames.includes(myName)) {
+                            myDisplayNames.push(myName);
+                            // 「さん」付きのバージョンも追加
+                            myDisplayNames.push(myName + 'さん');
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 自分のビデオタイルを探す（「あなた」というラベルがある要素）
+        const selfIndicators = document.querySelectorAll('[aria-label*="あなた"], [title*="あなた"], .NnTWjc');
+        selfIndicators.forEach(indicator => {
+            const container = indicator.closest('[data-participant-id], [data-requested-participant-id]');
+            if (container) {
+                const nameEl = container.querySelector('.zWGUib, .XEazBc, .adnwBd');
+                if (nameEl) {
+                    const myName = nameEl.textContent.trim().replace(/さん$/, '');
+                    if (myName && !myDisplayNames.includes(myName)) {
+                        myDisplayNames.push(myName);
+                        myDisplayNames.push(myName + 'さん');
+                    }
+                }
+            }
+        });
+        
+        console.log('CS: 自分の表示名リスト:', myDisplayNames);
+        
+        // 方法1: ビデオタイルから参加者を検出（参加者パネルが閉じていても機能）
+        const videoContainers = document.querySelectorAll('[data-participant-id], [data-requested-participant-id]');
+        console.log('CS: 方法1 - ビデオコンテナ要素数:', videoContainers.length);
+        
+        videoContainers.forEach(container => {
+            // 複数のセレクターを試す
+            const nameSelectors = [
+                '.zWGUib',              // 通常の名前表示
+                '[jsname="EydYod"]',    // 別の名前要素
+                '.XEazBc',              // ビデオタイルの名前
+                '.adnwBd',              // ミュート時の名前表示
+            ];
+            
+            let displayName = null;
+            for (const selector of nameSelectors) {
+                const nameEl = container.querySelector(selector);
+                if (nameEl && nameEl.textContent.trim()) {
+                    displayName = nameEl.textContent.trim();
+                    break;
+                }
+            }
+            
+            // 名前が見つからない場合は、子要素のテキストを探す
+            if (!displayName) {
+                const textElements = container.querySelectorAll('*');
+                for (const el of textElements) {
+                    const text = el.textContent.trim();
+                    if (text && text.length > 1 && text.length < 50 && 
+                        !text.includes('ミュート') && 
+                        !text.includes('カメラ') &&
+                        !text.includes('画面') &&
+                        el.children.length === 0) { // 子要素を持たない要素のみ
+                        displayName = text;
+                        break;
+                    }
+                }
+            }
+            
+            if (displayName) {
+                // 「さん」を除去
+                displayName = displayName.replace(/さん$/, '');
+                console.log('CS: 方法1で検出した名前:', displayName);
+                
+                // 無効な名前をフィルタリング
+                if (displayName && 
+                    displayName !== '' && 
+                    displayName !== 'devices' && 
+                    displayName !== 'peoplepeople' &&
+                    !myDisplayNames.includes(displayName) &&
+                    !displayName.includes('（あなた）') &&
+                    !foundNames.has(displayName)) {
+                    
+                    foundNames.add(displayName);
+                    
+                    // 自分かどうかを判定
+                    let isMe = false;
+                    if (container.querySelector('.NnTWjc')?.textContent.includes('（あなた）')) {
+                        isMe = true;
+                    }
+                    
+                    participants.push({
+                        uid: generateParticipantId(displayName),
+                        displayName: displayName,
+                        email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`,
+                        isMe: isMe
+                    });
+                }
+            }
+        });
+        
+        // 方法2: 参加者パネルが開いている場合（data-participant-id要素から取得）
+        const participantItems = document.querySelectorAll('[role="listitem"][data-participant-id]');
+        console.log('CS: 方法2 - 参加者リスト要素数:', participantItems.length);
+        
         if (participantItems.length > 0) {
             participantItems.forEach(item => {
                 // より正確なセレクターで名前を取得
                 const nameElement = item.querySelector('.zWGUib');
                 const ariaLabel = item.getAttribute('aria-label');
                 
+                // 「（あなた）」が含まれていたらスキップ
+                const isMe = item.querySelector('.NnTWjc')?.textContent.includes('（あなた）');
+                if (isMe) {
+                    console.log('CS: 自分を検出してスキップ');
+                    return;
+                }
+                
                 if (nameElement) {
-                    const displayName = nameElement.textContent.trim();
-                    console.log('CS: 方法1で検出した名前 (zWGUib):', displayName);
+                    let displayName = nameElement.textContent.trim();
+                    // 「さん」を除去
+                    displayName = displayName.replace(/さん$/, '');
+                    console.log('CS: 方法2で検出した名前 (zWGUib):', displayName);
                     
                     // 無効な名前をフィルタリング
                     if (displayName && 
                         displayName !== '' && 
                         displayName !== 'devices' && 
                         displayName !== 'peoplepeople' &&
-                        !displayName.includes('（あなた）')) { // 自分を除外
+                        !myDisplayNames.includes(displayName) &&
+                        !displayName.includes('（あなた）') &&
+                        !foundNames.has(displayName)) {
                         
-                        // すでに追加されていないか確認
-                        const existingParticipant = participants.find(p => p.displayName === displayName);
-                        if (!existingParticipant) {
-                            participants.push({
-                                uid: generateParticipantId(displayName),
-                                displayName: displayName,
-                                email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
-                            });
-                        }
+                        foundNames.add(displayName);
+                        participants.push({
+                            uid: generateParticipantId(displayName),
+                            displayName: displayName,
+                            email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
+                        });
                     }
                 } else if (ariaLabel) {
                     // aria-labelから名前を取得（フォールバック）
-                    console.log('CS: 方法1で検出したaria-label:', ariaLabel);
-                    const displayName = ariaLabel.trim();
+                    console.log('CS: 方法2で検出したaria-label:', ariaLabel);
+                    let displayName = ariaLabel.trim();
+                    displayName = displayName.replace(/さん$/, '');
+                    
                     if (displayName && 
                         displayName !== '' && 
                         displayName !== 'devices' && 
                         displayName !== 'peoplepeople' &&
-                        !displayName.includes('（あなた）')) {
+                        !myDisplayNames.includes(displayName) &&
+                        !displayName.includes('（あなた）') &&
+                        !foundNames.has(displayName)) {
                         
-                        const existingParticipant = participants.find(p => p.displayName === displayName);
-                        if (!existingParticipant) {
-                            participants.push({
-                                uid: generateParticipantId(displayName),
-                                displayName: displayName,
-                                email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
-                            });
-                        }
+                        foundNames.add(displayName);
+                        participants.push({
+                            uid: generateParticipantId(displayName),
+                            displayName: displayName,
+                            email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
+                        });
                     }
                 }
             });
         }
         
-        // 方法2: ビデオタイルから名前を抽出（方法1で取得できなかった場合）
-        if (participants.length === 0) {
-            const videoTiles = document.querySelectorAll('[data-ssrc], [jsname="A5il2e"], .ZWQeQ, .MuzmKe');
-            console.log('CS: 方法2 - ビデオタイル要素数:', videoTiles.length);
-            videoTiles.forEach(tile => {
-                const nameElements = tile.querySelectorAll('.zWGUib, .EuSOXe, .NpwXQ');
-                nameElements.forEach(nameEl => {
-                    const displayName = nameEl.textContent.trim();
-                    console.log('CS: 方法2で検出した名前:', displayName);
-                    if (displayName && 
-                        displayName !== '' && 
-                        displayName !== '自分' && 
-                        displayName !== 'devices' &&
-                        displayName !== 'peoplepeople' &&
-                        !displayName.includes('ミュート') &&
-                        !displayName.includes('（あなた）')) {
-                        
-                        const existingParticipant = participants.find(p => p.displayName === displayName);
-                        if (!existingParticipant) {
-                            participants.push({
-                                uid: generateParticipantId(displayName),
-                                displayName: displayName,
-                                email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
-                            });
-                        }
-                    }
-                });
-            });
-        }
+        // 方法3: 画面下部のビデオタイルから参加者を検出
+        const bottomBarTiles = document.querySelectorAll('.Gv1mTb-aTv5jf');
+        console.log('CS: 方法3 - 画面下部タイル数:', bottomBarTiles.length);
+        
+        bottomBarTiles.forEach(tile => {
+            const nameEl = tile.querySelector('.XEazBc, .adnwBd');
+            if (nameEl) {
+                let displayName = nameEl.textContent.trim();
+                displayName = displayName.replace(/さん$/, '');
+                console.log('CS: 方法3で検出した名前:', displayName);
+                
+                if (displayName && 
+                    displayName !== '' && 
+                    displayName !== '自分' && 
+                    displayName !== 'devices' &&
+                    displayName !== 'peoplepeople' &&
+                    !myDisplayNames.includes(displayName) &&
+                    !displayName.includes('ミュート') &&
+                    !displayName.includes('（あなた）') &&
+                    !foundNames.has(displayName)) {
+                    
+                    foundNames.add(displayName);
+                    participants.push({
+                        uid: generateParticipantId(displayName),
+                        displayName: displayName,
+                        email: `${displayName.replace(/\s+/g, '').toLowerCase()}@unknown.com`
+                    });
+                }
+            }
+        });
         
         console.log('CS: 最終的に検出された参加者:', participants);
         
