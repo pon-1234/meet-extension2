@@ -8,6 +8,7 @@ let currentUrl = location.href; // 現在のURLを保持
 let selectedTarget = 'everyone'; // デフォルトは全員
 let selectedParticipant = null; // 選択された参加者情報
 let meetParticipants = {}; // 参加者のリスト { uid: { displayName, email } }
+let loggedInUsers = {}; // ログイン済みユーザーのリスト
 let participantsObserver = null; // 参加者変更監視用
 let participantsUpdateInterval = null; // 参加者更新インターバル
 
@@ -53,11 +54,36 @@ function requestAuthStatusFromBackground() {
     });
 }
 
+function requestLoggedInUsersFromBackground() {
+  chrome.runtime.sendMessage({ action: 'getLoggedInUsers' })
+    .then(response => {
+        if (response?.loggedInUsers) {
+            loggedInUsers = response.loggedInUsers;
+            console.log('CS: Updated logged in users:', loggedInUsers);
+            // ドロップダウンが開いている場合は更新
+            const dropdown = document.getElementById('ping-dropdown-list');
+            if (dropdown && !dropdown.classList.contains('hidden')) {
+                updateTargetDropdown();
+            }
+        }
+    })
+    .catch(error => {
+        handleMessageError(error, 'background', 'getLoggedInUsers');
+        console.warn('CS: Failed to get logged in users list');
+    });
+}
+
 function handleAuthResponse(response) {
     const user = response?.user;
     // console.log('CS: Handling auth response. User:', user ? user.email : 'null');
     const previousUser = currentUser;
     currentUser = user;
+    
+    // ログインユーザーリストを更新
+    if (user) {
+        requestLoggedInUsersFromBackground();
+    }
+    
     const uiExists = !!document.getElementById('ping-container');
     // 認証状態が変わったか、UIが存在しない場合にUI更新/リスナー調整
     if (JSON.stringify(previousUser) !== JSON.stringify(currentUser) || !uiExists) {
@@ -341,32 +367,13 @@ function toggleTargetDropdown(event) {
     }
 }
 
-function updateTargetDropdown() {
-    const dropdown = document.getElementById('ping-dropdown-list');
-    if (!dropdown) return;
-    
-    // 既存の項目をクリア
-    dropdown.innerHTML = '';
-    
-    // 「全員」オプションを追加
-    const everyoneOption = document.createElement('div');
-    everyoneOption.className = 'dropdown-item';
-    everyoneOption.textContent = '全員';
-    everyoneOption.addEventListener('click', () => selectTarget('everyone', null));
-    dropdown.appendChild(everyoneOption);
-    
-    // セパレーター
-    const separator = document.createElement('div');
-    separator.className = 'dropdown-separator';
-    dropdown.appendChild(separator);
-    
-    // 参加者リストを追加
-    const participants = Object.values(meetParticipants).filter(participant => {
-        // displayNameが存在することを確認
+function getLoggedInParticipants() {
+    // 会議参加者の中からログインユーザーのみを抽出
+    const allParticipants = Object.values(meetParticipants).filter(participant => {
+        // 基本的な検証
         if (!participant.displayName || participant.displayName.trim() === '') {
             return false;
         }
-        
         
         // 自分を除外（複数の方法でチェック）
         // 1. currentUserのdisplayNameと比較
@@ -387,21 +394,6 @@ function updateTargetDropdown() {
             }
         }
         
-        // 6. 自分の名前が参加者名に含まれているかチェック（特定のパターンのみ）
-        if (currentUser?.displayName) {
-            const myNameBase = currentUser.displayName.replace(/さん$/, '');
-            const participantNameBase = participant.displayName.replace(/さん$/, '');
-            
-            // 特定のパターンのみ除外（自分の名前+自分の名前、または自分の名前+さん+自分の名前）
-            const duplicatePattern1 = myNameBase + myNameBase; // "ponpon"
-            const duplicatePattern2 = myNameBase + 'さん' + myNameBase; // "ponさんpon"
-            
-            if (participantNameBase.toLowerCase() === duplicatePattern1.toLowerCase() ||
-                participantNameBase.toLowerCase() === duplicatePattern2.toLowerCase()) {
-                return false;
-            }
-        }
-        
         // 3. participant.isMe フラグがある場合
         if (participant.isMe) {
             return false;
@@ -417,16 +409,81 @@ function updateTargetDropdown() {
             return false;
         }
         
+        // 6. 自分の名前が参加者名に含まれているかチェック（特定のパターンのみ）
+        if (currentUser?.displayName) {
+            const myNameBase = currentUser.displayName.replace(/さん$/, '');
+            const participantNameBase = participant.displayName.replace(/さん$/, '');
+            
+            // 特定のパターンのみ除外（自分の名前+自分の名前、または自分の名前+さん+自分の名前）
+            const duplicatePattern1 = myNameBase + myNameBase; // "ponpon"
+            const duplicatePattern2 = myNameBase + 'さん' + myNameBase; // "ponさんpon"
+            
+            if (participantNameBase.toLowerCase() === duplicatePattern1.toLowerCase() ||
+                participantNameBase.toLowerCase() === duplicatePattern2.toLowerCase()) {
+                return false;
+            }
+        }
+        
         return true;
     });
     
+    // ログインユーザーリストと照合
+    const loggedInParticipants = allParticipants.filter(participant => {
+        // メールアドレスベースでマッチング
+        const participantEmailBase = participant.email ? participant.email.split('@')[0].toLowerCase() : '';
+        
+        // ログインユーザーリストの中に一致するユーザーがいるかチェック
+        for (const [uid, user] of Object.entries(loggedInUsers)) {
+            const userEmailBase = user.email ? user.email.split('@')[0].toLowerCase() : '';
+            const userDisplayName = user.displayName ? user.displayName.replace(/さん$/, '').toLowerCase() : '';
+            const participantName = participant.displayName ? participant.displayName.replace(/さん$/, '').toLowerCase() : '';
+            
+            // メールアドレスまたは表示名で一致を判定
+            if ((participantEmailBase && userEmailBase && participantEmailBase === userEmailBase) ||
+                (participantName && userDisplayName && participantName === userDisplayName)) {
+                // ログインユーザーの情報で補完
+                participant.loggedInUid = uid;
+                participant.loggedInEmail = user.email;
+                return true;
+            }
+        }
+        
+        return false;
+    });
+    
+    console.log('CS: All participants:', allParticipants.length);
+    console.log('CS: Logged in participants:', loggedInParticipants.length);
+    
+    return loggedInParticipants;
+}
+
+function updateTargetDropdown() {
+    const dropdown = document.getElementById('ping-dropdown-list');
+    if (!dropdown) return;
+    
+    // 既存の項目をクリア
+    dropdown.innerHTML = '';
+    
+    // 「全員」オプションを追加
+    const everyoneOption = document.createElement('div');
+    everyoneOption.className = 'dropdown-item';
+    everyoneOption.textContent = '全員';
+    everyoneOption.addEventListener('click', () => selectTarget('everyone', null));
+    dropdown.appendChild(everyoneOption);
+    
+    // セパレーター
+    const separator = document.createElement('div');
+    separator.className = 'dropdown-separator';
+    dropdown.appendChild(separator);
+    
+    // 参加者リストを追加（ログインユーザーのみ）
+    const participants = getLoggedInParticipants();
     
     if (participants.length === 0) {
-        // 参加者がいない場合の処理
-        // デモユーザーを表示するか、メッセージを表示
+        // ログインユーザーがいない場合の処理
         const noParticipantMessage = document.createElement('div');
         noParticipantMessage.className = 'dropdown-item';
-        noParticipantMessage.textContent = '他の参加者がいません';
+        noParticipantMessage.textContent = 'ログイン済みの参加者がいません';
         noParticipantMessage.style.opacity = '0.6';
         noParticipantMessage.style.cursor = 'default';
         dropdown.appendChild(noParticipantMessage);
@@ -500,11 +557,18 @@ function handlePingSelection(pingType, pingInfo) {
             showMessage("エラー: ピンの作成依頼に失敗しました。", true);
         });
     } else if (selectedTarget === 'individual' && selectedParticipant) {
-        // 個別向けピン
+        // 個別向けピン - Firebase認証されたユーザーのUIDを使用
+        const targetUserId = selectedParticipant.loggedInUid;
+        
+        if (!targetUserId) {
+            showMessage(`エラー: ${selectedParticipant.displayName}はログインしていません。個別ピンを送信できません。`, true);
+            return;
+        }
+        
         chrome.runtime.sendMessage({
             action: 'createDirectPin',
             meetingId: currentMeetingId,
-            targetUserId: selectedParticipant.uid,
+            targetUserId: targetUserId,
             targetDisplayName: selectedParticipant.displayName,
             pinData: { type: pingType }
         })
@@ -604,15 +668,21 @@ function extractParticipantsFromDOM() {
                 }
             }
             
-            // 名前が見つからない場合は、子要素のテキストを探す
+            // 名前が見つからない場合は、子要素のテキストを探す（より厳密にフィルタリング）
             if (!displayName) {
                 const textElements = container.querySelectorAll('*');
                 for (const el of textElements) {
                     const text = el.textContent.trim();
-                    if (text && text.length > 1 && text.length < 50 && 
+                    // より厳密な条件でフィルタリング
+                    if (text && 
+                        text.length > 1 && 
+                        text.length < 30 && // 長さ制限を短く
                         !text.includes('ミュート') && 
                         !text.includes('カメラ') &&
                         !text.includes('画面') &&
+                        !text.includes('さん') && // 「さん」が含まれる場合は除外
+                        !text.includes(' ') && // スペースが含まれる場合は除外
+                        !text.match(/^[a-zA-Z0-9\s]*$/) && // 英数字のみの場合は除外
                         el.children.length === 0) { // 子要素を持たない要素のみ
                         displayName = text;
                         break;
@@ -621,13 +691,23 @@ function extractParticipantsFromDOM() {
             }
             
             if (displayName) {
-                // 「さん」を除去
-                displayName = displayName.replace(/さん$/, '');
+                // 名前の正規化処理
+                displayName = displayName.replace(/さん$/, ''); // 「さん」を除去
+                displayName = displayName.replace(/\s+/g, ''); // すべての空白を除去
+                displayName = displayName.trim(); // 前後の空白を除去
+                
+                // 重複した文字パターンをチェック（例：「ponpon」→「pon」）
+                const halfLength = Math.floor(displayName.length / 2);
+                if (halfLength > 0 && displayName.substring(0, halfLength) === displayName.substring(halfLength)) {
+                    displayName = displayName.substring(0, halfLength);
+                }
+                
                 console.log('CS: 方法1で検出した名前:', displayName);
                 
                 // 無効な名前をフィルタリング
                 if (displayName && 
                     displayName !== '' && 
+                    displayName.length > 1 && // 最低2文字以上
                     displayName !== 'devices' && 
                     displayName !== 'peoplepeople' &&
                     !myDisplayNames.includes(displayName) &&
@@ -671,13 +751,23 @@ function extractParticipantsFromDOM() {
                 
                 if (nameElement) {
                     let displayName = nameElement.textContent.trim();
-                    // 「さん」を除去
-                    displayName = displayName.replace(/さん$/, '');
+                    // 名前の正規化処理
+                    displayName = displayName.replace(/さん$/, ''); // 「さん」を除去
+                    displayName = displayName.replace(/\s+/g, ''); // すべての空白を除去
+                    displayName = displayName.trim(); // 前後の空白を除去
+                    
+                    // 重複した文字パターンをチェック（例：「ponpon」→「pon」）
+                    const halfLength = Math.floor(displayName.length / 2);
+                    if (halfLength > 0 && displayName.substring(0, halfLength) === displayName.substring(halfLength)) {
+                        displayName = displayName.substring(0, halfLength);
+                    }
+                    
                     console.log('CS: 方法2で検出した名前 (zWGUib):', displayName);
                     
                     // 無効な名前をフィルタリング
                     if (displayName && 
                         displayName !== '' && 
+                        displayName.length > 1 && // 最低2文字以上
                         displayName !== 'devices' && 
                         displayName !== 'peoplepeople' &&
                         !myDisplayNames.includes(displayName) &&
@@ -695,10 +785,20 @@ function extractParticipantsFromDOM() {
                     // aria-labelから名前を取得（フォールバック）
                     console.log('CS: 方法2で検出したaria-label:', ariaLabel);
                     let displayName = ariaLabel.trim();
-                    displayName = displayName.replace(/さん$/, '');
+                    // 名前の正規化処理
+                    displayName = displayName.replace(/さん$/, ''); // 「さん」を除去
+                    displayName = displayName.replace(/\s+/g, ''); // すべての空白を除去
+                    displayName = displayName.trim(); // 前後の空白を除去
+                    
+                    // 重複した文字パターンをチェック（例：「ponpon」→「pon」）
+                    const halfLength = Math.floor(displayName.length / 2);
+                    if (halfLength > 0 && displayName.substring(0, halfLength) === displayName.substring(halfLength)) {
+                        displayName = displayName.substring(0, halfLength);
+                    }
                     
                     if (displayName && 
                         displayName !== '' && 
+                        displayName.length > 1 && // 最低2文字以上
                         displayName !== 'devices' && 
                         displayName !== 'peoplepeople' &&
                         !myDisplayNames.includes(displayName) &&
@@ -724,11 +824,22 @@ function extractParticipantsFromDOM() {
             const nameEl = tile.querySelector('.XEazBc, .adnwBd');
             if (nameEl) {
                 let displayName = nameEl.textContent.trim();
-                displayName = displayName.replace(/さん$/, '');
+                // 名前の正規化処理
+                displayName = displayName.replace(/さん$/, ''); // 「さん」を除去
+                displayName = displayName.replace(/\s+/g, ''); // すべての空白を除去
+                displayName = displayName.trim(); // 前後の空白を除去
+                
+                // 重複した文字パターンをチェック（例：「ponpon」→「pon」）
+                const halfLength = Math.floor(displayName.length / 2);
+                if (halfLength > 0 && displayName.substring(0, halfLength) === displayName.substring(halfLength)) {
+                    displayName = displayName.substring(0, halfLength);
+                }
+                
                 console.log('CS: 方法3で検出した名前:', displayName);
                 
                 if (displayName && 
                     displayName !== '' && 
+                    displayName.length > 1 && // 最低2文字以上
                     displayName !== '自分' && 
                     displayName !== 'devices' &&
                     displayName !== 'peoplepeople' &&

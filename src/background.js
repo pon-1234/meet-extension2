@@ -27,6 +27,7 @@ let auth = null;
 let database = null;
 let currentUser = null;
 let activeListeners = {}; // { meetingId: { ref, listeners: { added, removed } } }
+let loggedInUsers = {}; // { uid: { email, displayName } } - Firebase認証されたユーザーのリスト
 
 // content.js と同様のピン定義 (通知アイコンに使用)
 const PING_DEFINITIONS = {
@@ -81,11 +82,20 @@ function setupAuthListener() {
 
     if (isAllowedDomain) {
       currentUser = { uid: user.uid, email: user.email, displayName: user.displayName || user.email.split('@')[0] };
+      // ログインユーザーリストに追加
+      loggedInUsers[user.uid] = {
+        email: user.email,
+        displayName: user.displayName || user.email.split('@')[0]
+      };
       startListenersForActiveMeetTabs();
     } else {
       if (user) {
         console.warn("BG: User logged in but not from allowed domain:", user.email);
         signOut(auth).catch(err => console.error("BG: Sign out error due to domain mismatch:", err));
+      }
+      if (currentUser) {
+        // ログインユーザーリストから削除
+        delete loggedInUsers[currentUser.uid];
       }
       currentUser = null;
       stopAllListeners();
@@ -404,6 +414,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       if (typeof action === 'string' && action.trim() === 'getAuthStatus') {
         sendResponse({ user: currentUser });
+        return;
+      } else if (typeof action === 'string' && action.trim() === 'getLoggedInUsers') {
+        sendResponse({ loggedInUsers: loggedInUsers });
         return;
       } else if (typeof action === 'string' && action.trim() === 'requestLogin') {
         const result = await signInWithGoogle();
