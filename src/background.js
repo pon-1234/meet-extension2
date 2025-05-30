@@ -29,17 +29,65 @@ let currentUser = null;
 let activeListeners = {}; // { meetingId: { ref, listeners: { added, removed } } }
 let loggedInUsers = {}; // { uid: { email, displayName } } - Firebase認証されたユーザーのリスト
 
-// content.js と同様のピン定義 (通知アイコンに使用)
-const PING_DEFINITIONS = {
-    question: { icon: 'icons/question.png', label: '疑問' },
-    onMyWay: { icon: 'icons/onMyWay.png', label: '任せて' },
-    danger: { icon: 'icons/danger.png', label: '撤退' },
-    assist: { icon: 'icons/assist.png', label: '助けて' },
-    goodJob: { icon: 'icons/goodJob.png', label: 'いい感じ' },
-    finishHim: { icon: 'icons/finishHim.png', label: 'トドメだ' },
-    needInfo: { icon: 'icons/needInfo.png', label: '情報が必要' },
-    changePlan: { icon: 'icons/changePlan.png', label: '作戦変更' },
+// Language Manager for background script
+let BackgroundLanguageManager = {
+    currentLanguage: 'ja',
+    
+    async init() {
+        try {
+            const result = await chrome.storage.sync.get(['language']);
+            this.currentLanguage = result.language || 'ja';
+        } catch (error) {
+            console.log('Language initialization failed, using default:', error);
+            this.currentLanguage = 'ja';
+        }
+    },
+    
+    getPingLabel(pingType) {
+        const labels = {
+            ja: {
+                question: '疑問',
+                onMyWay: '任せて',
+                danger: '撤退',
+                assist: '助けて',
+                goodJob: 'いい感じ',
+                finishHim: 'トドメだ',
+                needInfo: '情報が必要',
+                changePlan: '作戦変更'
+            },
+            en: {
+                question: 'Question',
+                onMyWay: 'On it',
+                danger: 'Retreat',
+                assist: 'Help',
+                goodJob: 'Good job',
+                finishHim: 'Finish it',
+                needInfo: 'Need info',
+                changePlan: 'Change plan'
+            }
+        };
+        
+        const langDef = labels[this.currentLanguage];
+        if (!langDef || !langDef[pingType]) {
+            return labels.ja[pingType] || pingType;
+        }
+        return langDef[pingType];
+    }
 };
+
+// content.js と同様のピン定義 (通知アイコンに使用) - dynamically generate labels
+function getPingDefinitions() {
+    return {
+        question: { icon: 'icons/question.png', label: BackgroundLanguageManager.getPingLabel('question') },
+        onMyWay: { icon: 'icons/onMyWay.png', label: BackgroundLanguageManager.getPingLabel('onMyWay') },
+        danger: { icon: 'icons/danger.png', label: BackgroundLanguageManager.getPingLabel('danger') },
+        assist: { icon: 'icons/assist.png', label: BackgroundLanguageManager.getPingLabel('assist') },
+        goodJob: { icon: 'icons/goodJob.png', label: BackgroundLanguageManager.getPingLabel('goodJob') },
+        finishHim: { icon: 'icons/finishHim.png', label: BackgroundLanguageManager.getPingLabel('finishHim') },
+        needInfo: { icon: 'icons/needInfo.png', label: BackgroundLanguageManager.getPingLabel('needInfo') },
+        changePlan: { icon: 'icons/changePlan.png', label: BackgroundLanguageManager.getPingLabel('changePlan') },
+    };
+}
 
 
 // --- Firebase 初期化関数 (async) ---
@@ -160,7 +208,7 @@ function startDbListener(meetingId) {
 
             // --- デスクトップ通知作成処理 ---
             if (pin && pin.createdBy && currentUser && pin.createdBy.uid !== currentUser.uid) {
-                const pinDef = PING_DEFINITIONS[pin.type] || { label: pin.type, icon: 'icons/icon48.png' };
+                const pinDef = getPingDefinitions()[pin.type] || { label: pin.type, icon: 'icons/icon48.png' };
                 let iconUrl = chrome.runtime.getURL(pinDef.icon);
 
                 chrome.notifications.create(
@@ -209,7 +257,7 @@ function startDbListener(meetingId) {
 
             // --- 個別ピンのデスクトップ通知 ---
             if (pin && pin.createdBy) {
-                const pinDef = PING_DEFINITIONS[pin.type] || { label: pin.type, icon: 'icons/icon48.png' };
+                const pinDef = getPingDefinitions()[pin.type] || { label: pin.type, icon: 'icons/icon48.png' };
                 let iconUrl = chrome.runtime.getURL(pinDef.icon);
 
                 chrome.notifications.create(
@@ -639,9 +687,20 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
 // --- 拡張機能インストール/起動時の処理 ---
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log("BG: Extension installed/updated.", details.reason);
+  await BackgroundLanguageManager.init();
   await initializeFirebase();
 });
 
-initializeFirebase().then(result => {
+// Initialize on startup
+(async () => {
+  await BackgroundLanguageManager.init();
+  const result = await initializeFirebase();
   console.log("BG: Initial Firebase initialization result:", result.success ? 'Success' : 'Failure', result.error || '');
+})();
+
+// Listen for language changes
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'sync' && changes.language) {
+    BackgroundLanguageManager.currentLanguage = changes.language.newValue;
+  }
 });

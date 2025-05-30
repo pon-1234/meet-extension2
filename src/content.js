@@ -12,17 +12,86 @@ let loggedInUsers = {}; // ログイン済みユーザーのリスト
 let participantsObserver = null; // 参加者変更監視用
 let participantsUpdateInterval = null; // 参加者更新インターバル
 
-// ピンの種類定義 (8種類に更新)
-const PING_DEFINITIONS = {
-    question: { icon: chrome.runtime.getURL('icons/question.png'), label: '疑問' }, // 疑問
-    onMyWay: { icon: chrome.runtime.getURL('icons/onMyWay.png'), label: '任せて' }, // 話します → 任せて
-    danger: { icon: chrome.runtime.getURL('icons/danger.png'), label: '撤退' }, // 撤退
-    assist: { icon: chrome.runtime.getURL('icons/assist.png'), label: '助けて' }, // 助けて
-    goodJob: { icon: chrome.runtime.getURL('icons/goodJob.png'), label: 'いい感じ' }, // NEW: いい感じ
-    finishHim: { icon: chrome.runtime.getURL('icons/finishHim.png'), label: 'トドメだ' }, // NEW: トドメだ
-    needInfo: { icon: chrome.runtime.getURL('icons/needInfo.png'), label: '情報が必要' }, // NEW: 情報が必要
-    changePlan: { icon: chrome.runtime.getURL('icons/changePlan.png'), label: '作戦変更' }, // NEW: 作戦変更
+// Language Manager for content script
+let ContentLanguageManager = {
+    currentLanguage: 'ja',
+    
+    async init() {
+        try {
+            const result = await chrome.storage.sync.get(['language']);
+            this.currentLanguage = result.language || 'ja';
+        } catch (error) {
+            console.log('Language initialization failed, using default:', error);
+            this.currentLanguage = 'ja';
+        }
+    },
+    
+    getPingLabel(pingType) {
+        const labels = {
+            ja: {
+                question: '疑問',
+                onMyWay: '任せて',
+                danger: '撤退',
+                assist: '助けて',
+                goodJob: 'いい感じ',
+                finishHim: 'トドメだ',
+                needInfo: '情報が必要',
+                changePlan: '作戦変更'
+            },
+            en: {
+                question: 'Question',
+                onMyWay: 'On it',
+                danger: 'Retreat',
+                assist: 'Help',
+                goodJob: 'Good job',
+                finishHim: 'Finish it',
+                needInfo: 'Need info',
+                changePlan: 'Change plan'
+            }
+        };
+        
+        const langDef = labels[this.currentLanguage];
+        if (!langDef || !langDef[pingType]) {
+            return labels.ja[pingType] || pingType;
+        }
+        return langDef[pingType];
+    },
+    
+    getUIText(key) {
+        const texts = {
+            ja: {
+                everyone: 'みんなに',
+                individual: '個別に',
+                noParticipants: '参加者がいません'
+            },
+            en: {
+                everyone: 'Everyone',
+                individual: 'Individual',
+                noParticipants: 'No participants'
+            }
+        };
+        
+        const langDef = texts[this.currentLanguage];
+        if (!langDef || !langDef[key]) {
+            return texts.ja[key] || key;
+        }
+        return langDef[key];
+    }
 };
+
+// ピンの種類定義 (8種類に更新) - dynamically generate labels
+function getPingDefinitions() {
+    return {
+        question: { icon: chrome.runtime.getURL('icons/question.png'), label: ContentLanguageManager.getPingLabel('question') },
+        onMyWay: { icon: chrome.runtime.getURL('icons/onMyWay.png'), label: ContentLanguageManager.getPingLabel('onMyWay') },
+        danger: { icon: chrome.runtime.getURL('icons/danger.png'), label: ContentLanguageManager.getPingLabel('danger') },
+        assist: { icon: chrome.runtime.getURL('icons/assist.png'), label: ContentLanguageManager.getPingLabel('assist') },
+        goodJob: { icon: chrome.runtime.getURL('icons/goodJob.png'), label: ContentLanguageManager.getPingLabel('goodJob') },
+        finishHim: { icon: chrome.runtime.getURL('icons/finishHim.png'), label: ContentLanguageManager.getPingLabel('finishHim') },
+        needInfo: { icon: chrome.runtime.getURL('icons/needInfo.png'), label: ContentLanguageManager.getPingLabel('needInfo') },
+        changePlan: { icon: chrome.runtime.getURL('icons/changePlan.png'), label: ContentLanguageManager.getPingLabel('changePlan') },
+    };
+}
 
 // メニューの配置計算用 (8種類用に角度を調整)
 const PING_MENU_POSITIONS = {
@@ -39,8 +108,9 @@ const PING_MENU_POSITIONS = {
 const PIN_AUTO_REMOVE_DURATION = 5 * 60 * 1000; // 5分 (ミリ秒)
 
 // --- 初期化関連 ---
-function initializeContentScript() {
+async function initializeContentScript() {
   console.log('Content script: Initializing for URL:', currentUrl);
+  await ContentLanguageManager.init();
   requestAuthStatusFromBackground();
   handleUrlUpdate(currentUrl); // 初回読み込み時のURLで処理を開始
 }
@@ -147,6 +217,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleAuthResponse(message);
       sendResponse({ received: true });
       break;
+    case 'languageChanged':
+      ContentLanguageManager.currentLanguage = message.language;
+      updateUILanguage();
+      sendResponse({ received: true });
+      break;
     case 'pinAdded':
       if (currentMeetingId && message.pinId && message.pin) {
           renderPin(message.pinId, message.pin);
@@ -209,7 +284,7 @@ function setupUI() {
   
   const selectorButton = document.createElement('button');
   selectorButton.id = 'ping-selector-button';
-  selectorButton.innerHTML = '<span id="selector-text">全員</span><span class="selector-arrow">▼</span>';
+  selectorButton.innerHTML = '<span id="selector-text">' + ContentLanguageManager.getUIText('everyone') + '</span><span class="selector-arrow">▼</span>';
   selectorButton.addEventListener('click', toggleTargetDropdown);
   
   const dropdownList = document.createElement('div');
@@ -253,8 +328,8 @@ function setupUI() {
   pingMenu.appendChild(pingCenter);
 
   // ピンオプションを追加
-  Object.keys(PING_DEFINITIONS).forEach(key => {
-    const pingInfo = PING_DEFINITIONS[key];
+  Object.keys(getPingDefinitions()).forEach(key => {
+    const pingInfo = getPingDefinitions()[key];
     const posInfo = PING_MENU_POSITIONS[key];
     const option = document.createElement('div');
     option.className = 'ping-option';
@@ -306,6 +381,17 @@ function setupUI() {
   }
   
   // 初回の参加者リスト更新
+  updateTargetDropdown();
+}
+
+function updateUILanguage() {
+  // Update selector button text
+  const selectorText = document.getElementById('selector-text');
+  if (selectorText && selectedTarget === 'everyone') {
+    selectorText.textContent = ContentLanguageManager.getUIText('everyone');
+  }
+  
+  // Update dropdown content
   updateTargetDropdown();
 }
 
@@ -467,7 +553,7 @@ function updateTargetDropdown() {
     // 「全員」オプションを追加
     const everyoneOption = document.createElement('div');
     everyoneOption.className = 'dropdown-item';
-    everyoneOption.textContent = '全員';
+    everyoneOption.textContent = ContentLanguageManager.getUIText('everyone');
     everyoneOption.addEventListener('click', () => selectTarget('everyone', null));
     dropdown.appendChild(everyoneOption);
     
@@ -483,7 +569,7 @@ function updateTargetDropdown() {
         // ログインユーザーがいない場合の処理
         const noParticipantMessage = document.createElement('div');
         noParticipantMessage.className = 'dropdown-item';
-        noParticipantMessage.textContent = 'ログイン済みの参加者がいません';
+        noParticipantMessage.textContent = ContentLanguageManager.getUIText('noParticipants');
         noParticipantMessage.style.opacity = '0.6';
         noParticipantMessage.style.cursor = 'default';
         dropdown.appendChild(noParticipantMessage);
@@ -507,7 +593,7 @@ function selectTarget(mode, participant) {
     // セレクターのテキストを更新
     const selectorText = document.getElementById('selector-text');
     if (selectorText) {
-        selectorText.textContent = mode === 'everyone' ? '全員' : participant.displayName;
+        selectorText.textContent = mode === 'everyone' ? ContentLanguageManager.getUIText('everyone') : participant.displayName;
     }
     
     // ドロップダウンを閉じる
@@ -928,7 +1014,7 @@ function renderPin(pinId, pin) {
     removePinElement(pinId, false);
   }
 
-  const pingInfo = PING_DEFINITIONS[pin.type] || { icon: chrome.runtime.getURL('icons/question.png'), label: '不明' };
+  const pingInfo = getPingDefinitions()[pin.type] || { icon: chrome.runtime.getURL('icons/question.png'), label: ContentLanguageManager.getUIText('unknown') || '不明' };
   const pinElement = document.createElement('div');
   pinElement.id = `pin-${pinId}`;
   pinElement.className = 'pin';

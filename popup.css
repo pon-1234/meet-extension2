@@ -14,12 +14,31 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 h1 {
   font-size: 18px;
   color: #4285F4;
-  margin-top: 0;
-  margin-bottom: 16px;
-  text-align: center;
+  margin: 0;
+  flex: 1;
+}
+
+.language-selector {
+  margin-left: 8px;
+}
+
+#language-select {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  background-color: white;
+  cursor: pointer;
 }
 
 h2 {

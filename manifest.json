@@ -32,7 +32,8 @@
   "permissions": [
     "identity",
     "tabs",
-    "notifications"
+    "notifications",
+    "storage"
   ],
   "oauth2": {
     "client_id": "217193969712-071graoe05q4eit5jtk881kklc3o7u30.apps.googleusercontent.com",
