@@ -7,7 +7,15 @@
 </head>
 <body>
   <div class="container">
-    <h1>Meet Ping Extension</h1>
+    <div class="header">
+      <h1>Meet Ping Extension</h1>
+      <div class="language-selector">
+        <select id="language-select">
+          <option value="ja">🇯🇵 日本語</option>
+          <option value="en">🇺🇸 English</option>
+        </select>
+      </div>
+    </div>
 
     <div id="status">ステータス: 読み込み中...</div>
 
@@ -33,7 +41,7 @@
     </div>
   </div>
 
-  <!-- バンドルされたスクリプトのみ読み込む -->
+  <!-- バンドルされたスクリプト -->
   <script src="popup.bundle.js"></script>
 </body>
 </html>

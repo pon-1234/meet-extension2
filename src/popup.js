@@ -84,6 +84,19 @@ const PopupLanguageManager = {
   },
   
   updateTexts() {
+    // Update status text if currently displayed
+    const statusElement = document.getElementById('status');
+    if (statusElement) {
+      const currentText = statusElement.textContent;
+      if (currentText.includes('未ログイン') || currentText.includes('Not logged in')) {
+        statusElement.textContent = this.getText('ui', 'status_notLoggedIn');
+      } else if (currentText.includes('ログイン済み') || currentText.includes('Logged in')) {
+        statusElement.textContent = this.getText('ui', 'status_loggedIn');
+      } else if (currentText.includes('認証状態を確認中') || currentText.includes('Checking authentication')) {
+        statusElement.textContent = this.getText('ui', 'status_checking');
+      }
+    }
+    
     // Update all text elements
     const elements = [
       { id: 'login-section p', text: this.getText('ui', 'loginRequired') },
@@ -98,6 +111,44 @@ const PopupLanguageManager = {
       
       if (el && element.text) {
         el.textContent = element.text;
+      }
+    });
+    
+    // Update button texts
+    const loginButton = document.getElementById('login-button');
+    const logoutButton = document.getElementById('logout-button');
+    if (loginButton && !loginButton.disabled) {
+      loginButton.textContent = this.getText('ui', 'loginButton');
+    }
+    if (logoutButton && !logoutButton.disabled) {
+      logoutButton.textContent = this.getText('ui', 'logoutButton');
+    }
+    
+    // Update instruction list items
+    this.updateInstructionList();
+  },
+  
+  updateInstructionList() {
+    const instructionItems = document.querySelectorAll('#instructions ol li');
+    const instructions = {
+      ja: [
+        'Google Meetの会議に参加します',
+        '画面左下に表示される「!」ボタンをクリックします',
+        '表示されるメニューから送信したいピンを選択します',
+        'ピンは他の参加者（拡張機能をインストールしている人）にも表示されます'
+      ],
+      en: [
+        'Join a Google Meet meeting',
+        'Click the "!" button displayed at the bottom left of the screen',
+        'Select the pin you want to send from the displayed menu',
+        'The pin will also be displayed to other participants (who have the extension installed)'
+      ]
+    };
+    
+    const currentInstructions = instructions[this.currentLanguage] || instructions.ja;
+    instructionItems.forEach((item, index) => {
+      if (currentInstructions[index]) {
+        item.textContent = currentInstructions[index];
       }
     });
   }
@@ -117,9 +168,11 @@ document.addEventListener('DOMContentLoaded', function() {
   PopupLanguageManager.init();
   
   // Language selector event listener
-  languageSelect.addEventListener('change', function() {
-    PopupLanguageManager.setLanguage(this.value);
-  });
+  if (languageSelect) {
+    languageSelect.addEventListener('change', function() {
+      PopupLanguageManager.setLanguage(this.value);
+    });
+  }
 
   function displayError(message) {
       errorMessageElement.textContent = message;
