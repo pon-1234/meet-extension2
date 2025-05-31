@@ -62,12 +62,16 @@ let ContentLanguageManager = {
             ja: {
                 everyone: 'みんなに',
                 individual: '個別に',
-                noParticipants: '参加者がいません'
+                noParticipants: '参加者がいません',
+                openPinMenu: 'ピンメニューを開く',
+                closeMenu: 'メニューを閉じる'
             },
             en: {
                 everyone: 'Everyone',
                 individual: 'Individual',
-                noParticipants: 'No participants'
+                noParticipants: 'No participants',
+                openPinMenu: 'Open pin menu',
+                closeMenu: 'Close menu'
             }
         };
         
@@ -302,7 +306,7 @@ function setupUI() {
   menuButtonIcon.src = chrome.runtime.getURL('icons/pin-menu.png'); // 新しいアイコン画像
   menuButtonIcon.alt = 'ピンメニューを開く';
   pingButton.appendChild(menuButtonIcon);
-  pingButton.title = 'ピンメニューを開く';
+  pingButton.title = ContentLanguageManager.getUIText('openPinMenu');
   pingButton.addEventListener('click', togglePingMenu);
   container.appendChild(pingButton);
 
@@ -316,7 +320,7 @@ function setupUI() {
   pingCenter.id = 'ping-center';
   const centerIcon = document.createElement('img');
   centerIcon.src = chrome.runtime.getURL('icons/close-menu.svg');
-  pingCenter.title = 'メニューを閉じる';
+  pingCenter.title = ContentLanguageManager.getUIText('closeMenu');
   centerIcon.alt = 'メニューを閉じる';
   centerIcon.width = 24;
   centerIcon.height = 24;
@@ -390,6 +394,30 @@ function updateUILanguage() {
   if (selectorText && selectedTarget === 'everyone') {
     selectorText.textContent = ContentLanguageManager.getUIText('everyone');
   }
+  
+  // Update pin menu button title
+  const pingMenuButton = document.getElementById('ping-menu-button');
+  if (pingMenuButton) {
+    pingMenuButton.title = ContentLanguageManager.getUIText('openPinMenu');
+  }
+  
+  // Update close menu button title
+  const pingCenter = document.getElementById('ping-center');
+  if (pingCenter) {
+    pingCenter.title = ContentLanguageManager.getUIText('closeMenu');
+  }
+  
+  // Update pin option tooltips
+  const pingOptions = document.querySelectorAll('.ping-option');
+  pingOptions.forEach(option => {
+    const pingType = option.dataset.type;
+    if (pingType) {
+      const tooltip = option.querySelector('.ping-option-tooltip');
+      if (tooltip) {
+        tooltip.textContent = ContentLanguageManager.getPingLabel(pingType);
+      }
+    }
+  });
   
   // Update dropdown content
   updateTargetDropdown();
