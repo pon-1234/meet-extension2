@@ -28,6 +28,7 @@ let database = null;
 let currentUser = null;
 let activeListeners = {}; // { meetingId: { ref, listeners: { added, removed } } }
 let loggedInUsers = {}; // { uid: { email, displayName } } - Firebase認証されたユーザーのリスト
+let usersListener = null; // ログインユーザーリストのリスナー
 
 // Language Manager for background script
 let BackgroundLanguageManager = {
@@ -135,6 +136,12 @@ function setupAuthListener() {
         email: user.email,
         displayName: user.displayName || user.email.split('@')[0]
       };
+      
+      // Firebaseにユーザー情報を登録
+      registerUserInFirebase(currentUser);
+      // ログインユーザーリストのリスナーを開始
+      startLoggedInUsersListener();
+      
       startListenersForActiveMeetTabs();
     } else {
       if (user) {
@@ -142,11 +149,14 @@ function setupAuthListener() {
         signOut(auth).catch(err => console.error("BG: Sign out error due to domain mismatch:", err));
       }
       if (currentUser) {
+        // Firebaseからユーザー情報を削除
+        unregisterUserFromFirebase(currentUser);
         // ログインユーザーリストから削除
         delete loggedInUsers[currentUser.uid];
       }
       currentUser = null;
       stopAllListeners();
+      stopLoggedInUsersListener();
     }
 
     if (JSON.stringify(previousUser) !== JSON.stringify(currentUser)) {
@@ -704,3 +714,88 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     BackgroundLanguageManager.currentLanguage = changes.language.newValue;
   }
 });
+
+// --- ログインユーザー管理関数 ---
+async function registerUserInFirebase(user) {
+  if (!database || !user) return;
+  try {
+    const userRef = ref(database, `users/${user.uid}`);
+    await set(userRef, {
+      email: user.email,
+      displayName: user.displayName,
+      lastSeen: serverTimestamp()
+    });
+    console.log('BG: User registered in Firebase:', user.email);
+  } catch (error) {
+    console.error('BG: Error registering user in Firebase:', error);
+  }
+}
+
+async function unregisterUserFromFirebase(user) {
+  if (!database || !user) return;
+  try {
+    const userRef = ref(database, `users/${user.uid}`);
+    await remove(userRef);
+    console.log('BG: User unregistered from Firebase:', user.email);
+  } catch (error) {
+    console.error('BG: Error unregistering user from Firebase:', error);
+  }
+}
+
+function startLoggedInUsersListener() {
+  if (!database || usersListener) return;
+  
+  const usersRef = ref(database, 'users');
+  
+  usersListener = {
+    added: onChildAdded(usersRef, (snapshot) => {
+      const uid = snapshot.key;
+      const userData = snapshot.val();
+      if (uid && userData) {
+        loggedInUsers[uid] = {
+          email: userData.email,
+          displayName: userData.displayName
+        };
+        console.log('BG: User added to logged in list:', userData.email);
+        notifyLoggedInUsersUpdate();
+      }
+    }),
+    removed: onChildRemoved(usersRef, (snapshot) => {
+      const uid = snapshot.key;
+      if (uid && loggedInUsers[uid]) {
+        console.log('BG: User removed from logged in list:', loggedInUsers[uid].email);
+        delete loggedInUsers[uid];
+        notifyLoggedInUsersUpdate();
+      }
+    })
+  };
+  
+  console.log('BG: Started logged in users listener');
+}
+
+function stopLoggedInUsersListener() {
+  if (usersListener && database) {
+    const usersRef = ref(database, 'users');
+    if (usersListener.added) off(usersRef, 'child_added', usersListener.added);
+    if (usersListener.removed) off(usersRef, 'child_removed', usersListener.removed);
+    usersListener = null;
+    console.log('BG: Stopped logged in users listener');
+  }
+}
+
+function notifyLoggedInUsersUpdate() {
+  // Content scriptsに通知
+  chrome.tabs.query({ url: "https://meet.google.com/*" })
+    .then(tabs => {
+      tabs.forEach(tab => {
+        if (tab.id) {
+          chrome.tabs.sendMessage(tab.id, { 
+            action: 'loggedInUsersUpdated', 
+            loggedInUsers: loggedInUsers 
+          })
+          .catch(error => handleMessageError(error, tab.id, 'loggedInUsersUpdated'));
+        }
+      });
+    })
+    .catch(error => console.warn("BG: Error querying tabs for logged in users update:", error));
+}

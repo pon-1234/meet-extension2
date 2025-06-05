@@ -226,6 +226,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       updateUILanguage();
       sendResponse({ received: true });
       break;
+    case 'loggedInUsersUpdated':
+      if (message.loggedInUsers) {
+        loggedInUsers = message.loggedInUsers;
+        console.log('CS: Logged in users updated:', loggedInUsers);
+        // ドロップダウンが開いている場合は更新
+        const dropdown = document.getElementById('ping-dropdown-list');
+        if (dropdown && !dropdown.classList.contains('hidden')) {
+          updateTargetDropdown();
+        }
+      }
+      sendResponse({ received: true });
+      break;
     case 'pinAdded':
       if (currentMeetingId && message.pinId && message.pin) {
           renderPin(message.pinId, message.pin);
@@ -591,21 +603,52 @@ function updateTargetDropdown() {
     dropdown.appendChild(separator);
     
     // 参加者リストを追加（ログインユーザーのみ）
-    const participants = getLoggedInParticipants();
+    const loggedInParticipants = getLoggedInParticipants();
     
-    if (participants.length === 0) {
-        // ログインユーザーがいない場合の処理
-        const noParticipantMessage = document.createElement('div');
-        noParticipantMessage.className = 'dropdown-item';
-        noParticipantMessage.textContent = ContentLanguageManager.getUIText('noParticipants');
-        noParticipantMessage.style.opacity = '0.6';
-        noParticipantMessage.style.cursor = 'default';
-        dropdown.appendChild(noParticipantMessage);
+    // デバッグ情報を表示
+    console.log('CS: All participants in meetParticipants:', Object.values(meetParticipants));
+    console.log('CS: Logged in users:', loggedInUsers);
+    console.log('CS: Filtered logged in participants:', loggedInParticipants);
+    
+    if (loggedInParticipants.length === 0) {
+        // ログインユーザーがいない場合、全参加者を表示（デバッグ用）
+        const allParticipants = Object.values(meetParticipants).filter(participant => {
+            // 自分を除外
+            if (currentUser?.displayName) {
+                const myName = currentUser.displayName.replace(/さん$/, '');
+                const participantName = participant.displayName.replace(/さん$/, '');
+                if (myName === participantName) {
+                    return false;
+                }
+            }
+            return participant.displayName && participant.displayName.trim() !== '';
+        });
+        
+        if (allParticipants.length === 0) {
+            const noParticipantMessage = document.createElement('div');
+            noParticipantMessage.className = 'dropdown-item';
+            noParticipantMessage.textContent = ContentLanguageManager.getUIText('noParticipants');
+            noParticipantMessage.style.opacity = '0.6';
+            noParticipantMessage.style.cursor = 'default';
+            dropdown.appendChild(noParticipantMessage);
+        } else {
+            // 全参加者を表示（ログインしていない可能性があることを示す）
+            allParticipants.forEach(participant => {
+                const item = document.createElement('div');
+                item.className = 'dropdown-item';
+                const displayName = participant.displayName || '不明な参加者';
+                item.textContent = `${displayName} (未ログイン)`;
+                item.style.opacity = '0.7';
+                item.addEventListener('click', () => {
+                    showMessage(`${displayName}はログインしていません。個別ピンを送信できません。`, true);
+                });
+                dropdown.appendChild(item);
+            });
+        }
     } else {
-        participants.forEach(participant => {
+        loggedInParticipants.forEach(participant => {
             const item = document.createElement('div');
             item.className = 'dropdown-item';
-            // displayNameが正しく設定されているか確認
             const displayName = participant.displayName || '不明な参加者';
             item.textContent = displayName;
             item.addEventListener('click', () => selectTarget('individual', participant));
